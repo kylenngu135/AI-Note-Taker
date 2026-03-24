@@ -3,22 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CheatSheet Sharer</title>
+    <title>AI Notes Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div>
-        <input type="file" name="fileToUpload" id="fileToUpload">
-        <input type="submit" value="Upload Document" name="uploadDocButton" id="uploadDocButton">
-        <input type="submit" value="Upload Video" name="uploadVideoButton" id="uploadVideoButton">
-        <input type="submit" value="Upload Audio" name="uploadAudioButton" id="uploadAudioButton">
-        <script type="module" src="../frontend/main.js"></script>
-    </div>
-    <div>
-        <input type="submit" value="print rows" name="printRows" id="printRows">
-    </div>
-    <div>
-        <input type="submit" value="delete" name="deleteButton" id="deleteButton">
-        <input type="text" id="idToDelete">
-    </div>
+
+    <div class="grain"></div>
+
+    <header class="header">
+        <div class="header-inner">
+            <span class="logo">⌁ AI Notes</span>
+            <span class="tagline">upload. transcribe. study.</span>
+        </div>
+    </header>
+
+    <main class="main">
+
+        <!-- Upload Panel -->
+        <section class="panel upload-panel">
+            <div class="panel-label">01 — Upload</div>
+            <h2 class="panel-title">Drop your content.</h2>
+
+            <div class="file-drop-zone">
+                <input type="file" name="fileToUpload" id="fileToUpload" class="file-input">
+                <label for="fileToUpload" class="file-label">
+                    <span class="file-icon">⊕</span>
+                    <span class="file-text">Choose a file or drag it here</span>
+                    <span class="file-subtext">PDF, DOCX, TXT, MP4, MOV, MP3, WAV, M4A</span>
+                </label>
+            </div>
+
+            <div class="button-row">
+                <input type="submit" value="Upload Document" name="uploadDocButton" id="uploadDocButton" class="btn btn-primary">
+                <input type="submit" value="Upload Video" name="uploadVideoButton" id="uploadVideoButton" class="btn btn-secondary">
+                <input type="submit" value="Upload Audio" name="uploadAudioButton" id="uploadAudioButton" class="btn btn-secondary">
+            </div>
+        </section>
+
+        <!-- Library Panel -->
+        <section class="panel library-panel">
+            <div class="panel-label">02 — Library</div>
+            <div class="library-header">
+                <h2 class="panel-title">Your uploads.</h2>
+                <input type="submit" value="↻ Refresh" name="printRows" id="printRows" class="btn btn-ghost">
+            </div>
+            <div class="uploads-list" id="uploadsList">
+                <div class="empty-state">
+                    <span class="empty-icon">◎</span>
+                    <span>No uploads yet. Add something above.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Notes Panel -->
+        <section class="panel notes-panel" id="notesPanel">
+            <div class="panel-label">03 — Study Sheet</div>
+            <h2 class="panel-title" id="notesPanelTitle">Select an upload.</h2>
+            <div class="notes-content" id="notesContent">
+                <div class="empty-state">
+                    <span class="empty-icon">◈</span>
+                    <span>Click an upload to view its study sheet.</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Delete Panel -->
+        <section class="panel delete-panel">
+            <div class="panel-label">04 — Remove</div>
+            <h2 class="panel-title">Delete an upload.</h2>
+            <div class="delete-row">
+                <input type="text" id="idToDelete" class="text-input" placeholder="Paste upload ID here…">
+                <input type="submit" value="Delete" name="deleteButton" id="deleteButton" class="btn btn-danger">
+            </div>
+        </section>
+
+    </main>
+
+    <script type="module" src="../frontend/main.js"></script>
+    <script type="module" src="../frontend/notes.js"></script>
 </body>
 </html>

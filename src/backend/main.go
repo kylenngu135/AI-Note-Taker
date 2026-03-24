@@ -63,6 +63,7 @@ func main() {
 	http.HandleFunc("/api/uploads/audios", api.AudioUploadHandler)
 	http.HandleFunc("/api/uploads", api.GetUploadsHandler)
 	http.HandleFunc("/api/uploads/{id}", api.DeleteUploadHandler)
+	http.HandleFunc("/api/uploads/{id}/notes", api.GetNoteByUploadIDHandler)
 
 	// enable cors
 	fmt.Println("Server running on http://localhost:8080")

@@ -6,14 +6,14 @@ export function addDisplayButtonListeners() {
     });
 }
 
-async function displayRows() {
+/*
+export function loadUploads() {
     try {
-        const response = await fetch(UPLOADS_BASE_URL, {
+        const response = await fetch(`${UPLOADS_BASE_URL}`, {
             method: 'GET'
         });
 
         const data = await response.json();
-        console.log(data);
 
         if (data.error) {
             alert('Error: ' + data.error);
@@ -24,3 +24,23 @@ async function displayRows() {
         alert('Failed to connect to server: ' + error.message)
     }
 }
+*/
+
+async function displayRows() {
+    try {
+        const response = await fetch(UPLOADS_BASE_URL, {
+            method: 'GET'
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            alert('Error: ' + data.error);
+        } else {
+            alert('uploaded')
+        }
+    } catch (error) {
+        alert('Failed to connect to server: ' + error.message)
+    }
+}
+

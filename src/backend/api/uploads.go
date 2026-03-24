@@ -8,9 +8,13 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"log"
+
+	"github.com/google/uuid"
+
 	"AI-Note-Taker/transcription"
 	"AI-Note-Taker/storage"
-	"github.com/google/uuid"
+	"AI-Note-Taker/notes"
 )
 
 type Handler struct {
@@ -31,22 +35,30 @@ func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // get note for study sheet storage key
+    note, err := getNoteByUploadID(h.DB, id)
+    if err != nil {
+        http.Error(w, "note not found", http.StatusNotFound)
+        return
+    }
+
 	// Delete from r2 object storage
 	if err = storage.DeleteTranscription(r.Context(), upload.StorageKey); err != nil {
         http.Error(w, "failed to delete from storage", http.StatusInternalServerError)
         return
     }
 
-	err = DeleteUpload(h.DB, id);
+	if err = storage.DeleteTranscription(r.Context(), note.StorageKey); err != nil {
+        http.Error(w, "failed to delete from storage", http.StatusInternalServerError)
+        return
+    }
 
+	err = deleteUpload(h.DB, id);
 	if err != nil {
         http.Error(w, "failed to delete content", http.StatusInternalServerError)
 	}
 
-    w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusNoContent)
-	w.Write([]byte("upload deleted"))
-
 	return
 }
 
@@ -56,9 +68,9 @@ func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
         return
 	}
 
-	uploads, err := getAllUploads(h.DB)
+	uploads, err := getAllUploadIDs(h.DB)
 	if err != nil {
-        http.Error(w, "failed to upload ", http.StatusInternalServerError)
+        http.Error(w, "failed to upload", http.StatusInternalServerError)
         return
 	}
 
@@ -68,6 +80,27 @@ func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
 
 	return
 }
+
+func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+	}
+
+	id := r.PathValue("id")
+
+	note, err := getNoteByUploadID(h.DB, id)
+	if err != nil {
+        http.Error(w, "failed to revieve note", http.StatusInternalServerError)
+		return
+	}
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(note)
+	return
+}
+
 
 func (h *Handler) DocumentUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !validateUploadRequest(w, r) {
@@ -93,22 +126,16 @@ func (h *Handler) DocumentUploadHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	uploadID := uuid.New().String()
-
-	// upload to r2
-	storageKey, err := storage.UploadTranscription(r.Context(), uploadID, text, os.Getenv("R2_BUCKET_NAME"))
+	studySheet, err := notes.GenerateStudySheet(text)
 	if err != nil {
-		fmt.Println(err)
-		http.Error(w, "failed to store transcription", http.StatusInternalServerError)
+		http.Error(w, "failed to generate study sheet", http.StatusInternalServerError)
 		return
 	}
 
-    // 3. only insert into DB once R2 succeeds, store the storage key
-	_, err = insertUpload(h.DB, uploadID, header.Filename, fileType, header.Size, storageKey)
-    if err != nil {
-        http.Error(w, "failed to save upload", http.StatusInternalServerError)
-        return
-    }
+	err = uploadToDB(h, w, r, text, header, studySheet)
+	if err != nil {
+		return
+	}
 
 	writeSuccessResp(w)
 }
@@ -129,6 +156,21 @@ func (h *Handler) VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	text, err := transcription.TranscribeAudio(file, header.Filename)
+	if err != nil {
+		http.Error(w, "failed to transcribe video", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Println(text)
+
+	/*
+	err = uploadToDB(h, w, r, text, header)
+	if err != nil {
+		return
+	}
+	*/
+
 	writeSuccessResp(w)
 }
 
@@ -147,6 +189,18 @@ func (h *Handler) AudioUploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType) // 415
 		return
 	}
+
+	text, err := transcription.TranscribeAudio(file, header.Filename)
+
+	fmt.Println(text)
+	
+	/*
+	err = uploadToDB(h, w, r, text, header)
+	if err != nil {
+		return
+	}
+	*/
+
 
 	writeSuccessResp(w)
 }
@@ -232,3 +286,40 @@ func writeSuccessResp(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "upload successful"})
 }
+
+func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string, header *multipart.FileHeader, studysheet string) error {
+	uploadID := uuid.New().String()
+	noteID := uuid.New().String()
+
+	fileType := header.Header.Get("Content-Type")
+
+	// upload to r2
+	storageKey, err := storage.UploadTranscription(r.Context(), uploadID, text, os.Getenv("R2_BUCKET_NAME"))
+	if err != nil {
+		http.Error(w, "failed to store transcription", http.StatusInternalServerError)
+		return err
+	}
+
+	studySheetKey, err := storage.UploadTranscription(r.Context(), noteID, studysheet, os.Getenv("R2_BUCKET_NAME"))
+	if err != nil {
+		http.Error(w, "failed to store transcription", http.StatusInternalServerError)
+		return err
+	}
+
+	_, err = insertUpload(h.DB, uploadID, header.Filename, fileType, header.Size, storageKey)
+    if err != nil {
+        http.Error(w, "failed to save upload", http.StatusInternalServerError)
+        return err
+    }
+
+	_, err = insertNote(h.DB, noteID, uploadID, studysheet, studySheetKey);
+    if err != nil {
+		fmt.Println(err)
+        http.Error(w, "failed to save upload", http.StatusInternalServerError)
+        return err
+    }
+	log.Println("note inserted into DB:", noteID)
+
+	return nil
+}
+

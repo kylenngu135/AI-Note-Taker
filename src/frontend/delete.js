@@ -14,13 +14,8 @@ async function deleteRow() {
             method: 'DELETE'
         });
 
-        const data = await response.json();
-        console.log(data);
-
-        if (data.error) {
-            alert('Error: ' + data.error);
-        } else {
-            alert('uploaded')
+        if (response.status === 204) {
+            alert(response.status)
         }
     } catch (error) {
         alert('Failed to connect to server: ' + error.message)
