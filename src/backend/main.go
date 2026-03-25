@@ -18,7 +18,7 @@ import (
 
 func main() {
 	if err := godotenv.Load("../../.env"); err != nil {
-		log.Fatal("error loading .env file")
+		log.Println("no .env file found, using environment variables")
 	}
 
 	// R2 storage
@@ -49,21 +49,19 @@ func main() {
 
 	api := &api.Handler{DB: db}
 
+	// api endpoints
+	http.HandleFunc("POST /api/uploads/documents", api.DocumentUploadHandler)
+	http.HandleFunc("POST /api/uploads/videos", api.VideoUploadHandler)
+	http.HandleFunc("POST /api/uploads/audios", api.AudioUploadHandler)
+	http.HandleFunc("GET /api/uploads", api.GetUploadsHandler)
+	http.HandleFunc("DELETE /api/uploads/{id}", api.DeleteUploadHandler)
+	http.HandleFunc("GET /api/uploads/{id}/notes", api.GetNoteByUploadIDHandler)
+
 	// static server for hosting on localhost:8080
 	fs_ui := http.FileServer(http.Dir("../ui"))
 	fs_frontend := http.FileServer(http.Dir("../frontend"))
-	fs_storage := http.FileServer(http.Dir("../../storage/media/"))
-	http.Handle("/", fs_ui)
 	http.Handle("/frontend/", http.StripPrefix("/frontend/", fs_frontend))
-	http.Handle("/storage/", http.StripPrefix("/storage/", fs_storage))
-
-	// api endpoints
-	http.HandleFunc("/api/uploads/documents", api.DocumentUploadHandler)
-	http.HandleFunc("/api/uploads/videos", api.VideoUploadHandler)
-	http.HandleFunc("/api/uploads/audios", api.AudioUploadHandler)
-	http.HandleFunc("/api/uploads", api.GetUploadsHandler)
-	http.HandleFunc("/api/uploads/{id}", api.DeleteUploadHandler)
-	http.HandleFunc("/api/uploads/{id}/notes", api.GetNoteByUploadIDHandler)
+	http.Handle("/", fs_ui)
 
 	// enable cors
 	fmt.Println("Server running on http://localhost:8080")

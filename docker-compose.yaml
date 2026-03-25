@@ -8,23 +8,36 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/apt/lists/*
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+
+  whisper:
+    build: ./src/backend/whisper
+    network_mode: host
+    ports:
+      - "8081:8081"
 
   backend:
-    build: ./src/backend
+    build:
+      context: ./src
+      dockerfile: backend/Dockerfile
+      network: host
+    network_mode: host
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      whisper:
+        condition: service_started
     env_file:
       - .env
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
 volumes:
   postgres_data:

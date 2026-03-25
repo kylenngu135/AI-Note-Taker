@@ -192,14 +192,16 @@ func (h *Handler) AudioUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	text, err := transcription.TranscribeAudio(file, header.Filename)
 
-	fmt.Println(text)
-	
-	/*
-	err = uploadToDB(h, w, r, text, header)
+	studySheet, err := notes.GenerateStudySheet(text)
+	if err != nil {
+		http.Error(w, "failed to generate study sheet", http.StatusInternalServerError)
+		return
+	}
+
+	err = uploadToDB(h, w, r, text, header, studySheet)
 	if err != nil {
 		return
 	}
-	*/
 
 
 	writeSuccessResp(w)

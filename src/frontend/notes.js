@@ -1,4 +1,4 @@
-import { marked } from "https://cdn.jsdelivr.net/npm/marked/src/marked.min.js";
+import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
 const API_BASE_URL = "http://localhost:8080/api";
 const UPLOADS_URL = `${API_BASE_URL}/uploads`;
