@@ -55,13 +55,13 @@ func UploadTranscription(ctx context.Context, uploadID, text, bucket string) (st
 }
 
 func DeleteTranscription(ctx context.Context, storageKey string) error {
-    _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
-        Bucket: aws.String(os.Getenv("R2_BUCKET_NAME")),
-        Key:    aws.String(storageKey),
-    })
-    if err != nil {
-        return fmt.Errorf("failed to delete transcription: %w", err)
-    }
+	_, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(os.Getenv("R2_BUCKET_NAME")),
+		Key:    aws.String(storageKey),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete transcription: %w", err)
+	}
 
-    return nil
+	return nil
 }

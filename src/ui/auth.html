@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Notes — Sign In</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="grain"></div>
+
+    <header class="header">
+        <div class="header-inner">
+            <a href="index.html" class="logo">⌁ AI Notes</a>
+            <span class="tagline">upload. transcribe. study.</span>
+        </div>
+    </header>
+
+    <main class="main auth-main">
+
+        <!-- Register Panel -->
+        <section class="panel auth-panel">
+            <div class="panel-label">01 — New here?</div>
+            <h2 class="panel-title">Create an account.</h2>
+
+            <div class="auth-fields">
+                <input
+                    type="email"
+                    id="registerEmailField"
+                    name="emailField"
+                    class="text-input"
+                    placeholder="Email address"
+                    autocomplete="email"
+                >
+                <input
+                    type="password"
+                    id="registerPasswordField"
+                    name="passwordField"
+                    class="text-input"
+                    placeholder="Password"
+                    autocomplete="new-password"
+                >
+                <input
+                    type="submit"
+                    id="registerButton"
+                    value="Create Account"
+                    class="btn btn-primary btn-full"
+                >
+            </div>
+        </section>
+
+        <!-- Login Panel -->
+        <section class="panel auth-panel">
+            <div class="panel-label">02 — Welcome back.</div>
+            <h2 class="panel-title">Sign in.</h2>
+
+            <div class="auth-fields">
+                <input
+                    type="email"
+                    id="loginEmailField"
+                    name="emailField"
+                    class="text-input"
+                    placeholder="Email address"
+                    autocomplete="email"
+                >
+                <input
+                    type="password"
+                    id="loginPasswordField"
+                    name="passwordField"
+                    class="text-input"
+                    placeholder="Password"
+                    autocomplete="current-password"
+                >
+                <input
+                    type="submit"
+                    id="loginButton"
+                    value="Sign In"
+                    class="btn btn-primary btn-full"
+                >
+            </div>
+        </section>
+
+    </main>
+
+    <script type="module" src="../frontend/auth.js"></script>
+</body>
+</html>

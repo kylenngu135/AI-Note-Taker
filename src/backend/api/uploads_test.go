@@ -3,13 +3,12 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"net/textproto"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"testing"
-	"mime/multipart"
 )
-
 
 // --- mock file helpers ---
 
@@ -49,8 +48,8 @@ func mockMP3() []byte {
 	// ID3 header: "ID3" + version + flags + size
 	header := []byte{
 		0x49, 0x44, 0x33, // "ID3"
-		0x03, 0x00,       // version 2.3.0
-		0x00,             // flags
+		0x03, 0x00, // version 2.3.0
+		0x00,                   // flags
 		0x00, 0x00, 0x00, 0x00, // size
 	}
 	padded := make([]byte, 512)

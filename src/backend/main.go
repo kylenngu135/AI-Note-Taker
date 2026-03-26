@@ -1,16 +1,17 @@
 package main
 
 import (
-    "database/sql"
-    "log"
-    "os"
+	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 
-    _ "github.com/jackc/pgx/v5/stdlib"
-    "github.com/joho/godotenv"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 
 	"AI-Note-Taker/api"
+	"AI-Note-Taker/auth"
 	"AI-Note-Taker/middleware"
 	"AI-Note-Taker/migrations"
 	"AI-Note-Taker/storage"
@@ -41,21 +42,25 @@ func main() {
 		log.Fatal("failed to connect to database:", err)
 	}
 
-    if err = migrations.RunMigrations(os.Getenv("DATABASE_URL")); err != nil {
-        log.Fatal(err)
-    }
+	if err = migrations.RunMigrations(os.Getenv("DATABASE_URL")); err != nil {
+		log.Fatal(err)
+	}
 
 	log.Println("database connected succesfully")
 
 	api := &api.Handler{DB: db}
+	auth := &auth.Handler{DB: db}
 
-	// api endpoints
+	// upload endpoints
 	http.HandleFunc("POST /api/uploads/documents", api.DocumentUploadHandler)
 	http.HandleFunc("POST /api/uploads/videos", api.VideoUploadHandler)
 	http.HandleFunc("POST /api/uploads/audios", api.AudioUploadHandler)
 	http.HandleFunc("GET /api/uploads", api.GetUploadsHandler)
 	http.HandleFunc("DELETE /api/uploads/{id}", api.DeleteUploadHandler)
 	http.HandleFunc("GET /api/uploads/{id}/notes", api.GetNoteByUploadIDHandler)
+
+	// auth endpoints
+	http.HandleFunc("POST /api/auth/register", auth.RegisterUserHandler)
 
 	// static server for hosting on localhost:8080
 	fs_ui := http.FileServer(http.Dir("../ui"))

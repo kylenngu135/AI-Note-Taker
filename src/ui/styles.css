@@ -403,6 +403,31 @@ body {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Auth page ── */
+.auth-main {
+    grid-template-columns: 1fr 1fr;
+    max-width: 800px;
+}
+
+.auth-panel {
+    grid-column: unset;
+}
+
+.auth-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.btn-full {
+    width: 100%;
+    text-align: center;
+}
+
+.logo {
+    text-decoration: none;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .main {
