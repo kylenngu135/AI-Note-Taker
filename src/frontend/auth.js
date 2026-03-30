@@ -4,6 +4,9 @@ function addButtonListeners() {
     document.getElementById("registerButton").addEventListener("click", () => {
         register();
     });
+    document.getElementById("loginButton").addEventListener("click", () => {
+        login();
+    });
 }
 
 async function register() {
@@ -20,7 +23,28 @@ async function register() {
         body: JSON.stringify(data)
     })
 
-    console.log(response.json())
+    if (response.status === 201) {
+        window.location.href = "/";
+    }
+}
+
+async function login() {
+    const data = {
+        email: document.getElementById("loginEmailField").value,
+        password: document.getElementById("loginPasswordField").value
+    }
+    
+    const response = await fetch(`${AUTH_URL}/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    })
+
+    if (response.status === 201) {
+        window.location.href = "/";
+    }
 }
 
 addButtonListeners();

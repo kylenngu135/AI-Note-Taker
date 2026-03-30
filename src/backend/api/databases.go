@@ -217,3 +217,33 @@ func InsertUser(database *sql.DB, id, email, passwordHash string) error {
 
 	return nil
 }
+
+func GetHashedPasswordByEmail(database *sql.DB, email string) (string, error) {
+	query := `SELECT password_hash FROM users WHERE email = ($1)`
+
+	var password string
+	err := database.QueryRow(query, email).Scan(&password)
+
+	if err == sql.ErrNoRows {
+		return "", err
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query database: %w", err)
+	}
+
+	return password, nil
+}
+
+func GetUserIDByEmail(database *sql.DB, email string) (string, error) {
+	query := `SELECT id FROM users WHERE email = ($1)`
+
+	var id string
+	err := database.QueryRow(query, email).Scan(&id)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query database: %w", err)
+	}
+
+	return id, nil
+}

@@ -29,7 +29,8 @@ export function loadUploads() {
 async function displayRows() {
     try {
         const response = await fetch(UPLOADS_BASE_URL, {
-            method: 'GET'
+            method: 'GET',
+            credentials: "include"
         });
 
         const data = await response.json();
