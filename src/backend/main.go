@@ -60,12 +60,11 @@ func main() {
 	mainMux.Handle("GET /api/auth/me", http.HandlerFunc(auth.UserDataHandler))
 
 	// upload endpoints
-	mainMux.Handle("POST /api/uploads/documents", middleware.AuthMiddleware(http.HandlerFunc(api.DocumentUploadHandler)))
-	mainMux.Handle("POST /api/uploads/videos", middleware.AuthMiddleware(http.HandlerFunc(api.VideoUploadHandler)))
-	mainMux.Handle("POST /api/uploads/audios", middleware.AuthMiddleware(http.HandlerFunc(api.AudioUploadHandler)))
+	mainMux.Handle("POST /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(api.UploadHandler)))
 	mainMux.Handle("GET /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(api.GetUploadsHandler)))
 	mainMux.Handle("DELETE /api/uploads/{id}", middleware.AuthMiddleware(http.HandlerFunc(api.DeleteUploadHandler)))
 	mainMux.Handle("GET /api/uploads/{id}/notes", middleware.AuthMiddleware(http.HandlerFunc(api.GetNoteByUploadIDHandler)))
+	mainMux.Handle("POST /api/uploads/{id}/notes/regenerate", middleware.AuthMiddleware(http.HandlerFunc(api.RegenerateNoteHandler)))
 
 	// static server for hosting on localhost:8080
 	fs_ui := http.FileServer(http.Dir("../ui"))

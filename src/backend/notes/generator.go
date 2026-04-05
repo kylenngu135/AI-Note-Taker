@@ -88,3 +88,67 @@ func GenerateStudySheet(transcription string) (string, error) {
 
 	return groqResp.Choices[0].Message.Content, nil
 }
+
+func RegenerateStudySheet(existingNotes, prompt string) (string, error) {
+	// build the request body with existing notes as context and new prompt
+	reqBody := GroqRequest{
+		Model: "llama-3.3-70b-versatile",
+		Messages: []Message{
+			{
+				Role: "system",
+				Content: `You are an expert study assistant. When given a transcription or document,
+				you generate a comprehensive study sheet that includes:
+				- A brief summary
+				- Key concepts and definitions
+				- Main topics covered
+				- Important facts to remember
+				- A to-do list of action items if any were mentioned
+				Format your response in clear markdown.`,
+			},
+			{
+				Role:    "user",
+				Content: fmt.Sprintf("Please create a study sheet from the following transcription:\n\n%s", existingNotes),
+			},
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+	}
+
+	// convert request body to JSON
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// create the HTTP request
+	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("GROQ_API_KEY"))
+
+	// send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// decode the response
+	var groqResp GroqResponse
+	if err := json.NewDecoder(resp.Body).Decode(&groqResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(groqResp.Choices) == 0 {
+		return "", fmt.Errorf("no response from groq")
+	}
+
+	return groqResp.Choices[0].Message.Content, nil
+}

@@ -26,6 +26,20 @@ type Note struct {
 	LastUpdatedAt time.Time `json:"last_updated_at"`
 }
 
+type NoteHistory struct {
+	ID        string    `json:"id"`
+	NoteID    string    `json:"note_id"`
+	UploadID  string    `json:"upload_id"`
+	Prompt    string    `json:"prompt"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NoteWithHistory struct {
+	Note    Note         `json:"note"`
+	History []NoteHistory `json:"history"`
+}
+
 type UploadListItem struct {
 	ID        string    `json:"id"`
 	Filename  string    `json:"filename"`
@@ -192,6 +206,99 @@ func insertNote(database *sql.DB, noteID, uploadID, content, storageKey string) 
 	}
 
 	return note, nil
+}
+
+func UpdateNote(database *sql.DB, noteID, content, storageKey string) (Note, error) {
+	query := `UPDATE notes SET content = $1, storage_key = $2 WHERE id = $3 RETURNING id, upload_id, content, storage_key, created_at, last_updated_at`
+
+	var note Note
+	err := database.QueryRow(query, content, storageKey, noteID).Scan(
+		&note.ID,
+		&note.UploadID,
+		&note.Content,
+		&note.StorageKey,
+		&note.CreatedAt,
+		&note.LastUpdatedAt,
+	)
+	if err != nil {
+		return Note{}, fmt.Errorf("failed to update note: %w", err)
+	}
+
+	return note, nil
+}
+
+func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, content, storageKey string) (NoteHistory, error) {
+	query := `
+		INSERT INTO note_history (id, note_id, upload_id, prompt, content, storage_key)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, note_id, upload_id, prompt, content, created_at
+	`
+
+	var history NoteHistory
+	err := database.QueryRow(query, historyID, noteID, uploadID, prompt, content, storageKey).Scan(
+		&history.ID,
+		&history.NoteID,
+		&history.UploadID,
+		&history.Prompt,
+		&history.Content,
+		&history.CreatedAt,
+	)
+	if err != nil {
+		return NoteHistory{}, fmt.Errorf("failed to insert note history: %w", err)
+	}
+
+	return history, nil
+}
+
+func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory, error) {
+	query := `
+		SELECT id, note_id, upload_id, prompt, content, created_at
+		FROM note_history
+		WHERE upload_id = $1
+		ORDER BY created_at ASC
+	`
+
+	rows, err := database.Query(query, uploadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get note history: %w", err)
+	}
+	defer rows.Close()
+
+	var history []NoteHistory
+	for rows.Next() {
+		var h NoteHistory
+		err := rows.Scan(
+			&h.ID,
+			&h.NoteID,
+			&h.UploadID,
+			&h.Prompt,
+			&h.Content,
+			&h.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan note history: %w", err)
+		}
+		history = append(history, h)
+	}
+
+	return history, nil
+}
+
+func GetNoteWithHistoryByUploadID(database *sql.DB, uploadID string) (NoteWithHistory, error) {
+	note, err := getNoteByUploadID(database, uploadID)
+	if err != nil {
+		return NoteWithHistory{}, err
+	}
+
+	history, err := GetNoteHistoryByUploadID(database, uploadID)
+	if err != nil {
+		return NoteWithHistory{}, err
+	}
+
+	return NoteWithHistory{
+		Note:    note,
+		History: history,
+	}, nil
 }
 
 func CheckUserExists(database *sql.DB, email string) (bool, error) {

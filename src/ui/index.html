@@ -13,76 +13,125 @@
 
     <div class="grain"></div>
 
-    <header class="header">
-        <div class="header-inner">
-            <span class="logo">⌁ AI Notes</span>
-            <span class="tagline">upload. transcribe. study.</span>
-            <a href="auth.html" id="signInBtn" class="btn btn-secondary">Sign In</a>
+    <div class="app-layout">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <div class="sidebar-logo">⌁ AI Notes</div>
+                <button class="new-chat-btn" id="newChatBtn">
+                    <span class="new-chat-icon">＋</span>
+                    <span>New Upload</span>
+                </button>
+            </div>
+
+            <div class="sidebar-recents">
+                <div class="recents-label">Recents</div>
+                <div class="recents-list" id="recentsList">
+                    <div class="recents-empty">No uploads yet.</div>
+                </div>
+            </div>
+
+            <div class="sidebar-bottom">
+                <button class="sidebar-user-btn" id="signInBtn" onclick="window.location.href='auth.html'">
+                    <span class="user-icon">◎</span>
+                    <span id="signInLabel">Sign In</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- Top bar -->
+            <div class="topbar">
+                <div class="topbar-title" id="topbarTitle">AI Notes</div>
+                <div class="topbar-actions">
+                    <button class="topbar-btn hidden" id="exportBtn">↑ Export</button>
+                    <button class="topbar-btn topbar-btn-danger hidden" id="deleteBtn">✕ Delete</button>
+                </div>
+            </div>
+
+            <!-- Welcome View -->
+            <div class="chat-view" id="welcomeView">
+                <div class="welcome-content">
+                    <h1 class="welcome-title">What are we studying today?</h1>
+                    <p class="welcome-sub">Upload a document, video, or audio file to generate notes.</p>
+
+                    <div class="upload-card">
+                        <div class="file-drop-zone">
+                            <input type="file" name="fileToUpload" id="fileToUpload" class="file-input">
+                            <label for="fileToUpload" class="file-label">
+                                <span class="file-icon">⊕</span>
+                                <span class="file-text">Drop a file or click to browse</span>
+                                <span class="file-subtext">PDF · DOCX · TXT · MP4 · MOV · MP3 · WAV · M4A</span>
+                            </label>
+                        </div>
+
+                        <div class="prompt-row">
+                            <input
+                                type="text"
+                                id="customPrompt"
+                                class="prompt-input"
+                                placeholder="Custom prompt (optional) — leave blank to use default…"
+                            >
+                        </div>
+
+                        <div class="upload-btn-row">
+                            <input type="submit" value="Upload" name="uploadButton" id="uploadButton" class="btn btn-primary">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes View -->
+            <div class="chat-view hidden" id="notesView">
+                <div class="messages-area" id="messagesArea"></div>
+            </div>
+
+            <!-- Processing View -->
+            <div class="chat-view hidden" id="processingView">
+                <div class="processing-content">
+                    <div class="processing-spinner"></div>
+                    <p class="processing-label">Transcribing and generating your study sheet…</p>
+                </div>
+            </div>
+
+            <!-- Message Bar -->
+            <div class="message-bar" id="messageBar">
+                <div class="message-bar-inner">
+                    <textarea
+                        id="followUpInput"
+                        class="message-input"
+                        placeholder="Ask a follow-up question or request changes…"
+                        rows="1"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn">↑</button>
+                </div>
+                <div class="message-bar-hint">AI Notes may make mistakes. Always verify important information.</div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal-overlay hidden" id="exportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Export As</span>
+                <button class="modal-close" id="closeExportModal">✕</button>
+            </div>
+            <div class="modal-options">
+                <button class="modal-option" data-format="txt">.txt</button>
+                <button class="modal-option" data-format="pdf">.pdf</button>
+                <button class="modal-option" data-format="docx">.docx</button>
+            </div>
         </div>
-    </header>
+    </div>
 
-    <main class="main">
-
-        <!-- Upload Panel -->
-        <section class="panel upload-panel">
-            <div class="panel-label">01 — Upload</div>
-            <h2 class="panel-title">Drop your content.</h2>
-
-            <div class="file-drop-zone">
-                <input type="file" name="fileToUpload" id="fileToUpload" class="file-input">
-                <label for="fileToUpload" class="file-label">
-                    <span class="file-icon">⊕</span>
-                    <span class="file-text">Choose a file or drag it here</span>
-                    <span class="file-subtext">PDF, DOCX, TXT, MP4, MOV, MP3, WAV, M4A</span>
-                </label>
-            </div>
-
-            <div class="button-row">
-                <input type="submit" value="Upload Document" name="uploadDocButton" id="uploadDocButton" class="btn btn-primary">
-                <input type="submit" value="Upload Video" name="uploadVideoButton" id="uploadVideoButton" class="btn btn-secondary">
-                <input type="submit" value="Upload Audio" name="uploadAudioButton" id="uploadAudioButton" class="btn btn-secondary">
-            </div>
-        </section>
-
-        <!-- Library Panel -->
-        <section class="panel library-panel">
-            <div class="panel-label">02 — Library</div>
-            <div class="library-header">
-                <h2 class="panel-title">Your uploads.</h2>
-                <input type="submit" value="↻ Refresh" name="printRows" id="printRows" class="btn btn-ghost">
-            </div>
-            <div class="uploads-list" id="uploadsList">
-                <div class="empty-state">
-                    <span class="empty-icon">◎</span>
-                    <span>No uploads yet. Add something above.</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Notes Panel -->
-        <section class="panel notes-panel" id="notesPanel">
-            <div class="panel-label">03 — Study Sheet</div>
-            <h2 class="panel-title" id="notesPanelTitle">Select an upload.</h2>
-            <div class="notes-content" id="notesContent">
-                <div class="empty-state">
-                    <span class="empty-icon">◈</span>
-                    <span>Click an upload to view its study sheet.</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Delete Panel -->
-        <section class="panel delete-panel">
-            <div class="panel-label">04 — Remove</div>
-            <h2 class="panel-title">Delete an upload.</h2>
-            <div class="delete-row">
-                <input type="text" id="idToDelete" class="text-input" placeholder="Paste upload ID here…">
-                <input type="submit" value="Delete" name="deleteButton" id="deleteButton" class="btn btn-danger">
-            </div>
-        </section>
-    </main>
-    <script type="module" src="../frontend/ui.js"></script>
     <script type="module" src="../frontend/main.js"></script>
     <script type="module" src="../frontend/notes.js"></script>
+    <script type="module" src="../frontend/ui.js"></script>
+
 </body>
 </html>

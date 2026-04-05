@@ -1,6 +1,7 @@
 package api
 
 import (
+	"archive/zip"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,8 +10,10 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jung-kurt/gofpdf"
 
 	"AI-Note-Taker/notes"
 	"AI-Note-Taker/storage"
@@ -19,6 +22,10 @@ import (
 
 type Handler struct {
 	DB *sql.DB
+}
+
+type RegenerateRequest struct {
+	Prompt string `json:"prompt"`
 }
 
 func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -88,40 +95,130 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	id := r.PathValue("id")
+	format := r.URL.Query().Get("format")
 
 	note, err := getNoteByUploadID(h.DB, id)
 	if err != nil {
-		http.Error(w, "failed to revieve note", http.StatusInternalServerError)
+		http.Error(w, "failed to receive note", http.StatusInternalServerError)
+		return
+	}
+
+	switch format {
+	case "txt":
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.txt"`, id))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(note.Content))
+	case "pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.pdf"`, id))
+		w.WriteHeader(http.StatusOK)
+		if err := generatePDF(w, note.Content); err != nil {
+			http.Error(w, "failed to generate PDF", http.StatusInternalServerError)
+			return
+		}
+	case "docx":
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.docx"`, id))
+		w.WriteHeader(http.StatusOK)
+		if err := generateDOCX(w, note.Content); err != nil {
+			http.Error(w, "failed to generate DOCX", http.StatusInternalServerError)
+			return
+		}
+	default:
+		// Return note with history
+		noteWithHistory, err := GetNoteWithHistoryByUploadID(h.DB, id)
+		if err != nil {
+			http.Error(w, "failed to get note history", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(noteWithHistory)
+	}
+}
+
+func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.PathValue("id")
+
+	// Decode request body
+	var reqBody RegenerateRequest
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Get existing note
+	note, err := getNoteByUploadID(h.DB, id)
+	if err != nil {
+		http.Error(w, "note not found", http.StatusNotFound)
+		return
+	}
+
+	// Regenerate study sheet with existing notes as context
+	newContent, err := notes.RegenerateStudySheet(note.Content, reqBody.Prompt)
+	if err != nil {
+		http.Error(w, "failed to regenerate study sheet", http.StatusInternalServerError)
+		return
+	}
+
+	// Upload new content to R2
+	newStorageKey, err := storage.UploadTranscription(r.Context(), note.ID, newContent, os.Getenv("R2_BUCKET_NAME"))
+	if err != nil {
+		http.Error(w, "failed to store regenerated notes", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert into note_history
+	historyID := uuid.New().String()
+	_, err = InsertNoteHistory(h.DB, historyID, note.ID, id, reqBody.Prompt, newContent, newStorageKey)
+	if err != nil {
+		http.Error(w, "failed to store note history", http.StatusInternalServerError)
+		return
+	}
+
+	// Update note in database
+	updatedNote, err := UpdateNote(h.DB, note.ID, newContent, newStorageKey)
+	if err != nil {
+		http.Error(w, "failed to update note", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(note)
-	return
+	json.NewEncoder(w).Encode(updatedNote)
 }
 
-func (h *Handler) DocumentUploadHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !validateUploadRequest(w, r) {
 		return
 	}
 
-	// get file contents
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "no file provided", http.StatusBadRequest)
+		return
 	}
 
-	if err := validateDocument(file, header); err != nil {
+	fileType, err := getFileType(file, header)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
-	fileType := header.Header.Get("Content-Type")
-
-	text, err := transcription.ExtractText(file, fileType)
+	var text string
+	if isDocument(fileType) {
+		text, err = transcription.ExtractText(file, fileType)
+	} else {
+		text, err = transcription.TranscribeAudio(file, header.Filename)
+	}
 	if err != nil {
-		http.Error(w, "failed to extract text", http.StatusInternalServerError)
+		http.Error(w, "failed to transcribe", http.StatusInternalServerError)
 		return
 	}
 
@@ -139,70 +236,34 @@ func (h *Handler) DocumentUploadHandler(w http.ResponseWriter, r *http.Request) 
 	writeSuccessResp(w)
 }
 
-func (h *Handler) VideoUploadHandler(w http.ResponseWriter, r *http.Request) {
-	if !validateUploadRequest(w, r) {
-		return
+func getFileType(file multipart.File, header *multipart.FileHeader) (string, error) {
+	// Try document validators first
+	if err := validateDocument(file, header); err == nil {
+		return header.Header.Get("Content-Type"), nil
 	}
+	file.Seek(0, io.SeekStart)
 
-	// get file contents
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "no file provided", http.StatusBadRequest)
+	if err := validateVideo(file, header); err == nil {
+		return header.Header.Get("Content-Type"), nil
 	}
+	file.Seek(0, io.SeekStart)
 
-	if err := validateVideo(file, header); err != nil {
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType) // 415
-		return
+	if err := validateAudio(file, header); err == nil {
+		return header.Header.Get("Content-Type"), nil
 	}
+	file.Seek(0, io.SeekStart)
 
-	text, err := transcription.TranscribeAudio(file, header.Filename)
-	if err != nil {
-		http.Error(w, "failed to transcribe video", http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Println(text)
-
-	/*
-		err = uploadToDB(h, w, r, text, header)
-		if err != nil {
-			return
-		}
-	*/
-
-	writeSuccessResp(w)
+	return "", fmt.Errorf("unsupported file type")
 }
 
-func (h *Handler) AudioUploadHandler(w http.ResponseWriter, r *http.Request) {
-	if !validateUploadRequest(w, r) {
-		return
+func isDocument(fileType string) bool {
+	docTypes := map[string]bool{
+		"application/pdf": true,
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+		"text/plain":                true,
+		"text/plain; charset=utf-8": true,
 	}
-
-	// get file contents
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "no file provided", http.StatusBadRequest)
-	}
-
-	if err := validateAudio(file, header); err != nil {
-		http.Error(w, err.Error(), http.StatusUnsupportedMediaType) // 415
-		return
-	}
-
-	text, err := transcription.TranscribeAudio(file, header.Filename)
-
-	studySheet, err := notes.GenerateStudySheet(text)
-	if err != nil {
-		http.Error(w, "failed to generate study sheet", http.StatusInternalServerError)
-		return
-	}
-
-	err = uploadToDB(h, w, r, text, header, studySheet)
-	if err != nil {
-		return
-	}
-
-	writeSuccessResp(w)
+	return docTypes[fileType]
 }
 
 func validateUploadRequest(w http.ResponseWriter, r *http.Request) (ret bool) {
@@ -321,4 +382,84 @@ func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string,
 	log.Println("note inserted into DB:", noteID)
 
 	return nil
+}
+
+func generatePDF(w io.Writer, content string) error {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+
+	pdf.SetFont("Arial", "", 12)
+	pdf.SetAutoPageBreak(true, 15)
+
+	// Add title
+	pdf.SetFont("Arial", "B", 16)
+	pdf.MultiCell(0, 10, "Study Notes", "", "C", false)
+	pdf.Ln(5)
+
+	// Add content - split by lines and handle wrapped text
+	pdf.SetFont("Arial", "", 11)
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			pdf.Ln(4)
+			continue
+		}
+		pdf.MultiCell(0, 5, line, "", "L", false)
+	}
+
+	return pdf.Output(w)
+}
+
+func generateDOCX(w io.Writer, content string) error {
+	// Create a proper DOCX (ZIP) file
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	// [Content_Types].xml
+	ct, _ := zw.Create("[Content_Types].xml")
+	ct.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`))
+
+	// _rels/.rels
+	rels, _ := zw.Create("_rels/.rels")
+	rels.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`))
+
+	// word/document.xml - the actual content
+	doc, _ := zw.Create("word/document.xml")
+	doc.Write([]byte(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>Study Notes</w:t></w:r></w:p>
+%s
+</w:body>
+</w:document>`, contentToWordXML(content))))
+
+	return nil
+}
+
+func contentToWordXML(content string) string {
+	var sb strings.Builder
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			sb.WriteString(`<w:p/>`)
+		} else {
+			sb.WriteString(fmt.Sprintf(`<w:p><w:r><w:t>%s</w:t></w:r></w:p>`, escapeXML(line)))
+		}
+	}
+	return sb.String()
+}
+
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }

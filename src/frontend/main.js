@@ -1,7 +1,8 @@
 import { addUploadButtonListeners } from './FileUpload.js';
-import { addDisplayButtonListeners } from './DisplayRows.js';
 import { addDeleteButtonListeners } from './delete.js';
+import { addExportButtonListeners, addSendButtonListener } from './notes.js';
 
 addUploadButtonListeners();
-addDisplayButtonListeners();
 addDeleteButtonListeners();
+addExportButtonListeners();
+addSendButtonListener();

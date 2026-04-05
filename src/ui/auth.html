@@ -13,79 +13,37 @@
 
     <div class="grain"></div>
 
-    <header class="header">
-        <div class="header-inner">
-            <a href="index.html" class="logo">⌁ AI Notes</a>
-            <span class="tagline">upload. transcribe. study.</span>
-        </div>
+    <header class="auth-header">
+        <a href="index.html" class="auth-logo">⌁ AI Notes</a>
     </header>
 
-    <main class="main auth-main">
+    <div class="auth-main">
 
-        <!-- Register Panel -->
-        <section class="panel auth-panel">
+        <!-- Register -->
+        <section class="auth-panel">
             <div class="panel-label">01 — New here?</div>
             <h2 class="panel-title">Create an account.</h2>
-
             <div class="auth-fields">
-                <input
-                    type="email"
-                    id="registerEmailField"
-                    name="emailField"
-                    class="text-input"
-                    placeholder="Email address"
-                    autocomplete="email"
-                >
-                <input
-                    type="password"
-                    id="registerPasswordField"
-                    name="passwordField"
-                    class="text-input"
-                    placeholder="Password"
-                    autocomplete="new-password"
-                >
-                <input
-                    type="submit"
-                    id="registerButton"
-                    value="Create Account"
-                    class="btn btn-primary btn-full"
-                >
+                <input type="email" id="registerEmailField" name="emailField" class="text-input" placeholder="Email address" autocomplete="email">
+                <input type="password" id="registerPasswordField" name="passwordField" class="text-input" placeholder="Password" autocomplete="new-password">
+                <input type="submit" id="registerButton" value="Create Account" class="btn btn-primary btn-full">
             </div>
         </section>
 
-        <!-- Login Panel -->
-        <section class="panel auth-panel">
+        <!-- Login -->
+        <section class="auth-panel">
             <div class="panel-label">02 — Welcome back.</div>
             <h2 class="panel-title">Sign in.</h2>
-
             <div class="auth-fields">
-                <input
-                    type="email"
-                    id="loginEmailField"
-                    name="emailField"
-                    class="text-input"
-                    placeholder="Email address"
-                    autocomplete="email"
-                >
-                <input
-                    type="password"
-                    id="loginPasswordField"
-                    name="passwordField"
-                    class="text-input"
-                    placeholder="Password"
-                    autocomplete="current-password"
-                >
-                <input
-                    type="submit"
-                    id="loginButton"
-                    value="Sign In"
-                    class="btn btn-primary btn-full"
-                >
+                <input type="email" id="loginEmailField" name="emailField" class="text-input" placeholder="Email address" autocomplete="email">
+                <input type="password" id="loginPasswordField" name="passwordField" class="text-input" placeholder="Password" autocomplete="current-password">
+                <input type="submit" id="loginButton" value="Sign In" class="btn btn-primary btn-full">
             </div>
         </section>
 
-    </main>
+    </div>
 
     <script type="module" src="../frontend/auth.js"></script>
+
 </body>
 </html>
