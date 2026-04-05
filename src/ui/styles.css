@@ -639,6 +639,13 @@ body {
     color: var(--text-primary);
 }
 
+.modal-text {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
 .modal-close {
     background: none;
     border: none;
@@ -673,4 +680,14 @@ body {
 .modal-option:hover {
     border-color: var(--accent);
     color: var(--accent);
+}
+
+.modal-option-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.modal-option-danger:hover {
+    background: var(--danger);
+    color: #f1f5f9;
 }

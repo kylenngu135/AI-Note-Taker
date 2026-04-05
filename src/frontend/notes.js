@@ -7,6 +7,10 @@ const UPLOADS_URL = `${API_BASE_URL}/uploads`;
 let currentUploadId = null;
 let currentUploadName = null;
 
+export function getCurrentUploadId() {
+    return currentUploadId;
+}
+
 // fetch and render all uploads into the library list
 async function loadUploads() {
     const list = document.getElementById("recentsList");

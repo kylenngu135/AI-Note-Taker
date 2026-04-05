@@ -129,6 +129,21 @@
         </div>
     </div>
 
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay hidden" id="deleteModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">Delete Document?</span>
+                <button class="modal-close" id="closeDeleteModal">✕</button>
+            </div>
+            <p class="modal-text">This will delete the document and all its conversation history. This action cannot be undone.</p>
+            <div class="modal-options">
+                <button class="modal-option modal-option-danger" id="confirmDeleteBtn">Yes, Delete</button>
+                <button class="modal-option" id="cancelDeleteBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="../frontend/main.js"></script>
     <script type="module" src="../frontend/notes.js"></script>
     <script type="module" src="../frontend/ui.js"></script>
