@@ -11,4 +11,7 @@ RUN pip install -r requirements.txt --break-system-packages --root-user-action=i
 
 COPY server.py .
 
+# Download whisper model at build time so runtime doesn't need network
+RUN python -c "import whisper; whisper.load_model('small', download_root='/root/.cache/whisper')"
+
 CMD ["python", "server.py"]

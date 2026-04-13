@@ -36,11 +36,9 @@ async function loadUploads() {
 
             return `
                 <div class="upload-item" data-id="${upload.id}" data-name="${upload.filename}">
+                    <span class="upload-item-date">${date}</span>
                     <span class="upload-item-name">${upload.filename}</span>
-                    <div class="upload-item-meta">
-                        <span class="upload-item-date">${date}</span>
-                        <span class="upload-item-type ${ext}">${ext}</span>
-                    </div>
+                    <span class="upload-item-type ${ext}">${ext}</span>
                 </div>`;
         }).join("");
 
@@ -100,37 +98,12 @@ async function loadNotes(item) {
             return;
         }
 
-        // Build message bubbles: original note + all history entries
-        let html = "";
-
-        // Original note
-        html += `
+        // Show only the study sheet content
+        messagesArea.innerHTML = `
             <div class="message-bubble">
-                <div class="message-label">Study Sheet — ${name}</div>
                 <div>${marked.parse(data.note.content)}</div>
             </div>
         `;
-
-        // History entries (prompts and regenerated content)
-        if (data.history && data.history.length > 0) {
-            for (const entry of data.history) {
-                // User prompt bubble
-                html += `
-                    <div class="message-bubble user-message">
-                        <div>${escapeHtml(entry.prompt)}</div>
-                    </div>
-                `;
-                // AI response bubble
-                html += `
-                    <div class="message-bubble">
-                        <div class="message-label">Regenerated Study Sheet</div>
-                        <div>${marked.parse(entry.content)}</div>
-                    </div>
-                `;
-            }
-        }
-
-        messagesArea.innerHTML = html;
         messagesArea.scrollTop = messagesArea.scrollHeight;
 
     } catch (err) {
@@ -161,7 +134,7 @@ export function addExportButtonListeners() {
         }
     });
 
-    document.querySelectorAll(".modal-option").forEach(btn => {
+    exportModal.querySelectorAll(".modal-option").forEach(btn => {
         btn.addEventListener("click", () => {
             const format = btn.dataset.format;
             exportNotes(format);

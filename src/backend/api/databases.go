@@ -32,6 +32,7 @@ type NoteHistory struct {
 	UploadID  string    `json:"upload_id"`
 	Prompt    string    `json:"prompt"`
 	Content   string    `json:"content"`
+	StorageKey string   `json:"-"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -129,15 +130,32 @@ func getAllUploadIDs(database *sql.DB) (uploads []UploadListItem, err error) {
 	return
 }
 
-func deleteUpload(database *sql.DB, id string) (err error) {
+func deleteUpload(database *sql.DB, id string) error {
+	// Delete in order: note_history → notes → uploads (respecting FKs)
+	if err := deleteNoteHistoryByUploadID(database, id); err != nil {
+		return fmt.Errorf("failed to delete note history: %w", err)
+	}
+	if err := deleteNoteByUploadID(database, id); err != nil {
+		return fmt.Errorf("failed to delete note: %w", err)
+	}
 	query := `DELETE FROM uploads WHERE id = $1`
-
-	_, err = database.Exec(query, id)
+	_, err := database.Exec(query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete upload: %w", err)
 	}
-
 	return nil
+}
+
+func deleteNoteByUploadID(database *sql.DB, uploadID string) error {
+	query := `DELETE FROM notes WHERE upload_id = $1`
+	_, err := database.Exec(query, uploadID)
+	return err
+}
+
+func deleteNoteHistoryByUploadID(database *sql.DB, uploadID string) error {
+	query := `DELETE FROM note_history WHERE upload_id = $1`
+	_, err := database.Exec(query, uploadID)
+	return err
 }
 
 func GetUploadByID(database *sql.DB, id string) (Upload, error) {
@@ -231,7 +249,7 @@ func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, co
 	query := `
 		INSERT INTO note_history (id, note_id, upload_id, prompt, content, storage_key)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, note_id, upload_id, prompt, content, created_at
+		RETURNING id, note_id, upload_id, prompt, content, storage_key, created_at
 	`
 
 	var history NoteHistory
@@ -241,6 +259,7 @@ func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, co
 		&history.UploadID,
 		&history.Prompt,
 		&history.Content,
+		&history.StorageKey,
 		&history.CreatedAt,
 	)
 	if err != nil {
@@ -252,7 +271,7 @@ func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, co
 
 func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory, error) {
 	query := `
-		SELECT id, note_id, upload_id, prompt, content, created_at
+		SELECT id, note_id, upload_id, prompt, content, storage_key, created_at
 		FROM note_history
 		WHERE upload_id = $1
 		ORDER BY created_at ASC
@@ -273,6 +292,7 @@ func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory,
 			&h.UploadID,
 			&h.Prompt,
 			&h.Content,
+			&h.StorageKey,
 			&h.CreatedAt,
 		)
 		if err != nil {

@@ -1,6 +1,6 @@
 FROM golang:1.25.0
 
-RUN --network=host apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -12,7 +12,7 @@ COPY ui/ ./ui/
 
 WORKDIR /app/backend
 
-RUN --network=host go mod download
+RUN go mod download
 
 RUN go build -o main .
 

@@ -29,21 +29,21 @@ func main() {
 		os.Getenv("R2_SECRET_ACCESS_KEY"),
 	)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Fatal("failed to open database:", err)
+		log.Println("failed to open database:", err)
 	}
 	defer db.Close()
 
 	if err = db.Ping(); err != nil {
-		log.Fatal("failed to connect to database:", err)
+		log.Println("failed to connect to database:", err)
 	}
 
 	if err = migrations.RunMigrations(os.Getenv("DATABASE_URL")); err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	log.Println("database connected succesfully")

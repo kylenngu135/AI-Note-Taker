@@ -42,27 +42,30 @@ func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get note for study sheet storage key
 	note, err := getNoteByUploadID(h.DB, id)
 	if err != nil {
 		http.Error(w, "note not found", http.StatusNotFound)
 		return
 	}
 
-	// Delete from r2 object storage
-	if err = storage.DeleteTranscription(r.Context(), upload.StorageKey); err != nil {
-		http.Error(w, "failed to delete from storage", http.StatusInternalServerError)
+	history, err := GetNoteHistoryByUploadID(h.DB, id)
+	if err != nil {
+		http.Error(w, "failed to get note history", http.StatusInternalServerError)
 		return
 	}
 
-	if err = storage.DeleteTranscription(r.Context(), note.StorageKey); err != nil {
-		http.Error(w, "failed to delete from storage", http.StatusInternalServerError)
-		return
-	}
-
+	// Delete from DB (cascades to notes and note_history)
 	err = deleteUpload(h.DB, id)
 	if err != nil {
 		http.Error(w, "failed to delete content", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete from R2 object storage
+	_ = storage.DeleteTranscription(r.Context(), upload.StorageKey)
+	_ = storage.DeleteTranscription(r.Context(), note.StorageKey)
+	for _, hist := range history {
+		_ = storage.DeleteTranscription(r.Context(), hist.StorageKey)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
