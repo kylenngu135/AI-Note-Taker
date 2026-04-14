@@ -58,24 +58,6 @@ docker-compose up --build
 
 The application will be available at `http://localhost:8080`.
 
-### Backend (without Docker)
-
-If you prefer to run the backend directly:
-
-```bash
-cd src/backend
-go build -o main .
-./main
-```
-
-Note: This requires PostgreSQL, R2, and Groq credentials to be available in your environment.
-
-### Running Tests
-
-```bash
-cd src/backend && go test ./...
-```
-
 ## Usage
 
 ### Authentication
