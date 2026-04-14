@@ -103,7 +103,7 @@ To regenerate notes with a custom prompt:
 
 ## Tech Stack
 
-- **Backend**: Go (Gin/nethttp), PostgreSQL, Cloudflare R2 (AWS SDK v2)
+- **Backend**: Go, PostgreSQL, Cloudflare R2 (AWS SDK v2)
 - **Frontend**: Vanilla JS, HTML, CSS
 - **Transcription**: Python Flask with OpenAI Whisper
 - **AI**: Groq API with Llama 3.3 (70B)
