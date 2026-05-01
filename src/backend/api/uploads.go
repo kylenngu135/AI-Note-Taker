@@ -210,6 +210,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	fileType, err := getFileType(file, header)
 	if err != nil {
+		log.Println("Invalid file type: ", err.Error())
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
@@ -221,18 +222,21 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		text, err = transcription.TranscribeAudio(file, header.Filename)
 	}
 	if err != nil {
-		http.Error(w, "failed to transcribe", http.StatusInternalServerError)
+		log.Println("Failed to extract text: ", err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	studySheet, err := notes.GenerateStudySheet(text)
 	if err != nil {
+		log.Println("Failed to generate studysheet: ", err.Error())
 		http.Error(w, "failed to generate study sheet", http.StatusInternalServerError)
 		return
 	}
 
 	err = uploadToDB(h, w, r, text, header, studySheet)
 	if err != nil {
+		log.Println("Failed to upload to database: ", err.Error())
 		return
 	}
 
@@ -240,6 +244,8 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getFileType(file multipart.File, header *multipart.FileHeader) (string, error) {
+	defer file.Seek(0, io.SeekStart)
+
 	// Try document validators first
 	if err := validateDocument(file, header); err == nil {
 		return header.Header.Get("Content-Type"), nil
@@ -279,7 +285,7 @@ func validateUploadRequest(w http.ResponseWriter, r *http.Request) (ret bool) {
 		return
 	}
 
-	// max upload size is set to 50MB
+	// max upload size is set to 100MB
 	const maxUploadSize = 100 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 
@@ -333,12 +339,15 @@ func checkFileType(file multipart.File, header *multipart.FileHeader, allowedTyp
 
 	detected := http.DetectContentType(buf)
 
+	log.Println(detected)
+
 	// normalize zip to docx if the declared type is docx
 	if detected == "application/zip" && declared == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" {
 		detected = declared
 	}
 
 	if !allowedTypes[detected] {
+		log.Printf("Error: expected:%s, found: %s\n", declared, detected)
 		return fmt.Errorf("file content mismatch: declared %s but detected %s", declared, detected)
 	}
 

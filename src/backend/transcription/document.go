@@ -1,13 +1,13 @@
 package transcription
 
 import (
-	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
-
+    "strings"
 	"github.com/fumiama/go-docx"
-	"github.com/ledongthuc/pdf"
+	"github.com/gen2brain/go-fitz"
 )
 
 func ExtractText(file multipart.File, fileType string) (string, error) {
@@ -25,9 +25,12 @@ func ExtractText(file multipart.File, fileType string) (string, error) {
 
 func extractTXTText(file multipart.File) (string, error) {
 	bytes, err := io.ReadAll(file)
+
 	if err != nil {
+		log.Printf(err.Error())
 		return "", err
 	}
+
 	return string(bytes), nil
 }
 
@@ -59,29 +62,29 @@ func extractDOCXText(file multipart.File) (string, error) {
 }
 
 func extractPDFText(file multipart.File) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("failed to seek file: %w", err)
+	}
+
 	b, err := io.ReadAll(file)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
-	reader := bytes.NewReader(b)
-	r, err := pdf.NewReader(reader, int64(len(b)))
+	doc, err := fitz.NewFromMemory(b)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to open pdf: %w", err)
 	}
+	defer doc.Close()
 
-	var text string
-	for pageIndex := 1; pageIndex <= r.NumPage(); pageIndex++ {
-		page := r.Page(pageIndex)
-		if page.V.IsNull() {
-			continue
-		}
-		content, err := page.GetPlainText(nil)
+	var sb strings.Builder
+	for i := 0; i < doc.NumPage(); i++ {
+		text, err := doc.Text(i)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to extract text from page %d: %w", i, err)
 		}
-		text += content
+		sb.WriteString(text)
 	}
 
-	return text, nil
+	return strings.TrimSpace(sb.String()), nil
 }

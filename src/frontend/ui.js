@@ -4,6 +4,8 @@
 function showWelcomeView() {
     document.getElementById("welcomeView").classList.remove("hidden");
     document.getElementById("notesView").classList.add("hidden");
+    document.getElementById("processingView").classList.add("hidden");
+    document.getElementById("messageBar").classList.add("hidden");
     document.getElementById("topbarTitle").textContent = "AI Notes";
     // hide export and delete buttons when not viewing a document
     document.getElementById("exportBtn").classList.add("hidden");

@@ -2,6 +2,7 @@ FROM golang:1.25.0
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    libmupdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

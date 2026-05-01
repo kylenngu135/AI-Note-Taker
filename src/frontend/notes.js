@@ -25,7 +25,7 @@ async function loadUploads() {
                     <span class="empty-icon">◎</span>
                     <span>No uploads yet. Add something above.</span>
                 </div>`;
-            return;
+            return null;
         }
 
         list.innerHTML = uploads.map(upload => {
@@ -47,31 +47,31 @@ async function loadUploads() {
             item.addEventListener("click", () => loadNotes(item));
         });
 
+        return uploads;
+
     } catch (err) {
         list.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">⚠</span>
                 <span>Failed to load uploads.</span>
             </div>`;
+        return null;
     }
 }
 
-// fetch and display the notes for a specific upload
-async function loadNotes(item) {
-    const id = item.dataset.id;
-    const name = item.dataset.name;
-
-    // mark active
-    document.querySelectorAll(".recent-item").forEach(el => el.classList.remove("active"));
-    item.classList.add("active");
-
+// fetch and display the notes for a specific upload by id
+export async function loadNotesById(id, name) {
     const messagesArea = document.getElementById("messagesArea");
     const notesView = document.getElementById("notesView");
     const welcomeView = document.getElementById("welcomeView");
+    const processingView = document.getElementById("processingView");
+    const messageBar = document.getElementById("messageBar");
 
     // switch views
+    processingView.classList.add("hidden");
     welcomeView.classList.add("hidden");
     notesView.classList.remove("hidden");
+    messageBar.classList.remove("hidden");
 
     // show export and delete buttons
     document.getElementById("exportBtn").classList.remove("hidden");
@@ -109,6 +109,13 @@ async function loadNotes(item) {
     } catch (err) {
         messagesArea.innerHTML = `<div class="message-bubble"><div class="message-label">Failed to load study sheet.</div></div>`;
     }
+}
+
+// fetch and display the notes for a specific upload
+async function loadNotes(item) {
+    const id = item.dataset.id;
+    const name = item.dataset.name;
+    await loadNotesById(id, name);
 }
 
 // load uploads on page load
