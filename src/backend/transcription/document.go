@@ -2,12 +2,12 @@ package transcription
 
 import (
 	"fmt"
+	"github.com/fumiama/go-docx"
+	"github.com/gen2brain/go-fitz"
 	"io"
 	"log"
 	"mime/multipart"
-    "strings"
-	"github.com/fumiama/go-docx"
-	"github.com/gen2brain/go-fitz"
+	"strings"
 )
 
 func ExtractText(file multipart.File, fileType string) (string, error) {
@@ -75,7 +75,7 @@ func extractPDFText(file multipart.File) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open pdf: %w", err)
 	}
-	defer doc.Close()
+	defer func() { _ = doc.Close() }()
 
 	var sb strings.Builder
 	for i := 0; i < doc.NumPage(); i++ {

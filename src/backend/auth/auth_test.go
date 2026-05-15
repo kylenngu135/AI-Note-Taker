@@ -17,7 +17,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	_ = os.Setenv("JWT_SECRET", "test-secret")
 	os.Exit(m.Run())
 }
 
@@ -27,7 +27,7 @@ func newDB(t *testing.T) (*auth.Handler, sqlmock.Sqlmock) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return &auth.Handler{DB: db}, mock
 }
 
@@ -139,7 +139,7 @@ func TestLoginHandler_Success(t *testing.T) {
 		t.Errorf("status = %d, want 201; body: %s", rr.Code, rr.Body.String())
 	}
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	if resp["token"] == "" {
 		t.Error("expected token in response")
 	}
@@ -220,7 +220,7 @@ func TestUserDataHandler_ValidCookie(t *testing.T) {
 		t.Errorf("status = %d, want 200; body: %s", rr.Code, rr.Body.String())
 	}
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	if resp["user_id"] != "uid-1" {
 		t.Errorf("user_id = %q, want 'uid-1'", resp["user_id"])
 	}

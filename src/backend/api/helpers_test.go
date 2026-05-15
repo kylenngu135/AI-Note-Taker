@@ -129,14 +129,14 @@ func TestGenerateDOCX_ValidZip(t *testing.T) {
 
 func TestGenerateDOCX_ContentAppearsInDocument(t *testing.T) {
 	var buf bytes.Buffer
-	generateDOCX(&buf, "my unique content")
+	_ = generateDOCX(&buf, "my unique content")
 
 	r, _ := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 	for _, f := range r.File {
 		if f.Name == "word/document.xml" {
 			rc, _ := f.Open()
 			data, _ := io.ReadAll(rc)
-			rc.Close()
+			_ = rc.Close()
 			if !bytes.Contains(data, []byte("my unique content")) {
 				t.Error("document.xml does not contain the input content")
 			}
@@ -221,8 +221,8 @@ func TestValidateUploadRequest_ValidMultipart(t *testing.T) {
 	h.Set("Content-Disposition", `form-data; name="file"; filename="test.txt"`)
 	h.Set("Content-Type", "text/plain")
 	part, _ := writer.CreatePart(h)
-	part.Write([]byte("file content"))
-	writer.Close()
+	_, _ = part.Write([]byte("file content"))
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/uploads", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())

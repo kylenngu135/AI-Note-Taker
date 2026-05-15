@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
 
+	"AI-Note-Taker/middleware"
 	"AI-Note-Taker/notes"
 	"AI-Note-Taker/queue"
 	"AI-Note-Taker/storage"
@@ -30,7 +31,7 @@ type RegenerateRequest struct {
 }
 
 func getUserIDFromContext(r *http.Request) string {
-	raw := r.Context().Value("claims")
+	raw := r.Context().Value(middleware.ClaimsKey)
 	if raw == nil {
 		return ""
 	}
@@ -40,37 +41,6 @@ func getUserIDFromContext(r *http.Request) string {
 	}
 	userID, _ := (*claims)["user_id"].(string)
 	return userID
-}
-
-func getFiletypeTagName(fileType string) string {
-	switch fileType {
-	case "application/pdf":
-		return "pdf"
-	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-		return "docx"
-	case "text/plain", "text/plain; charset=utf-8":
-		return "txt"
-	case "video/mp4":
-		return "video"
-	case "audio/mpeg":
-		return "audio"
-	default:
-		return ""
-	}
-}
-
-func getFiletypeColor(tagName string) string {
-	colors := map[string]string{
-		"pdf":   "#ef4444",
-		"docx":  "#3b82f6",
-		"txt":   "#22c55e",
-		"video": "#f97316",
-		"audio": "#a855f7",
-	}
-	if c, ok := colors[tagName]; ok {
-		return c
-	}
-	return "#6b7fa3"
 }
 
 func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +84,6 @@ func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,9 +105,7 @@ func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(uploads)
-
-	return
+	_ = json.NewEncoder(w).Encode(uploads)
 }
 
 func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +129,7 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.txt"`, id))
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(content))
+		_, _ = w.Write([]byte(content))
 	case "pdf":
 		content := buildExportContent(noteWithHistory.History, noteWithHistory.Note.Content)
 		w.Header().Set("Content-Type", "application/pdf")
@@ -184,7 +151,7 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 	default:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(noteWithHistory)
+		_ = json.NewEncoder(w).Encode(noteWithHistory)
 	}
 }
 
@@ -335,7 +302,7 @@ func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(updatedNote)
+	_ = json.NewEncoder(w).Encode(updatedNote)
 }
 
 func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +315,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no file provided", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileType, err := getFileType(file, header)
 	if err != nil {
@@ -409,30 +376,30 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"job_id":    jobID,
 		"upload_id": uploadID,
 	})
 }
 
 func getFileType(file multipart.File, header *multipart.FileHeader) (string, error) {
-	defer file.Seek(0, io.SeekStart)
+	defer func() { _, _ = file.Seek(0, io.SeekStart) }()
 
 	// Try document validators first
 	if err := validateDocument(file, header); err == nil {
 		return header.Header.Get("Content-Type"), nil
 	}
-	file.Seek(0, io.SeekStart)
+	_, _ = file.Seek(0, io.SeekStart)
 
 	if err := validateVideo(file, header); err == nil {
 		return header.Header.Get("Content-Type"), nil
 	}
-	file.Seek(0, io.SeekStart)
+	_, _ = file.Seek(0, io.SeekStart)
 
 	if err := validateAudio(file, header); err == nil {
 		return header.Header.Get("Content-Type"), nil
 	}
-	file.Seek(0, io.SeekStart)
+	_, _ = file.Seek(0, io.SeekStart)
 
 	return "", fmt.Errorf("unsupported file type")
 }
@@ -507,7 +474,7 @@ func checkFileType(file multipart.File, header *multipart.FileHeader, allowedTyp
 	if _, err := file.Read(buf); err != nil {
 		return fmt.Errorf("could not read file")
 	}
-	defer file.Seek(0, io.SeekStart)
+	defer func() { _, _ = file.Seek(0, io.SeekStart) }()
 
 	detected := http.DetectContentType(buf)
 
@@ -529,88 +496,7 @@ func checkFileType(file multipart.File, header *multipart.FileHeader, allowedTyp
 func writeSuccessResp(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "upload successful"})
-}
-
-func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string, header *multipart.FileHeader, studysheet string, autoTags []string) error {
-	uploadID := uuid.New().String()
-	noteID := uuid.New().String()
-
-	fileType := header.Header.Get("Content-Type")
-
-	// upload to r2
-	storageKey, err := storage.UploadTranscription(r.Context(), uploadID, text, os.Getenv("R2_BUCKET_NAME"))
-	if err != nil {
-		http.Error(w, "failed to store transcription", http.StatusInternalServerError)
-		return err
-	}
-
-	studySheetKey, err := storage.UploadTranscription(r.Context(), noteID, studysheet, os.Getenv("R2_BUCKET_NAME"))
-	if err != nil {
-		http.Error(w, "failed to store transcription", http.StatusInternalServerError)
-		return err
-	}
-
-	_, err = insertUpload(h.DB, uploadID, header.Filename, fileType, header.Size, storageKey)
-	if err != nil {
-		http.Error(w, "failed to save upload", http.StatusInternalServerError)
-		return err
-	}
-
-	_, err = insertNote(h.DB, noteID, uploadID, studysheet, studySheetKey)
-	if err != nil {
-		fmt.Println(err)
-		http.Error(w, "failed to save upload", http.StatusInternalServerError)
-		return err
-	}
-	log.Println("note inserted into DB:", noteID)
-
-	// Store initial conversation in note_history: user's upload (transcription) -> AI response (study sheet)
-	historyID := uuid.New().String()
-	_, err = InsertNoteHistory(h.DB, historyID, noteID, uploadID, "user", text, "", storageKey)
-	if err != nil {
-		http.Error(w, "failed to store initial conversation", http.StatusInternalServerError)
-		return err
-	}
-
-	historyID = uuid.New().String()
-	_, err = InsertNoteHistory(h.DB, historyID, noteID, uploadID, "assistant", "", studysheet, studySheetKey)
-	if err != nil {
-		http.Error(w, "failed to store initial conversation", http.StatusInternalServerError)
-		return err
-	}
-
-	// Best-effort: create and associate tags (errors are logged but don't fail the upload)
-	userID := getUserIDFromContext(r)
-	if userID != "" {
-		// Auto tags from AI
-		for _, tagName := range autoTags {
-			tagID := uuid.New().String()
-			tag, err := createOrGetTag(h.DB, tagID, userID, tagName, "auto", "#6b7fa3")
-			if err != nil {
-				log.Printf("failed to create auto tag %q: %v", tagName, err)
-				continue
-			}
-			if err := addTagToNote(h.DB, noteID, tag.ID); err != nil {
-				log.Printf("failed to associate auto tag %q: %v", tagName, err)
-			}
-		}
-
-		// Filetype tag
-		filetypeTag := getFiletypeTagName(fileType)
-		if filetypeTag != "" {
-			tagID := uuid.New().String()
-			color := getFiletypeColor(filetypeTag)
-			tag, err := createOrGetTag(h.DB, tagID, userID, filetypeTag, "filetype", color)
-			if err != nil {
-				log.Printf("failed to create filetype tag %q: %v", filetypeTag, err)
-			} else if err := addTagToNote(h.DB, noteID, tag.ID); err != nil {
-				log.Printf("failed to associate filetype tag %q: %v", filetypeTag, err)
-			}
-		}
-	}
-
-	return nil
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "upload successful"})
 }
 
 func generatePDF(w io.Writer, content string) error {
@@ -642,11 +528,11 @@ func generatePDF(w io.Writer, content string) error {
 func generateDOCX(w io.Writer, content string) error {
 	// Create a proper DOCX (ZIP) file
 	zw := zip.NewWriter(w)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	// [Content_Types].xml
 	ct, _ := zw.Create("[Content_Types].xml")
-	ct.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+	_, _ = ct.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
@@ -655,20 +541,20 @@ func generateDOCX(w io.Writer, content string) error {
 
 	// _rels/.rels
 	rels, _ := zw.Create("_rels/.rels")
-	rels.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+	_, _ = rels.Write([]byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`))
 
 	// word/document.xml - the actual content
 	doc, _ := zw.Create("word/document.xml")
-	doc.Write([]byte(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+	_, _ = fmt.Fprintf(doc, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>
 <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>Study Notes</w:t></w:r></w:p>
 %s
 </w:body>
-</w:document>`, contentToWordXML(content))))
+</w:document>`, contentToWordXML(content))
 
 	return nil
 }
@@ -680,7 +566,7 @@ func contentToWordXML(content string) string {
 		if line == "" {
 			sb.WriteString(`<w:p/>`)
 		} else {
-			sb.WriteString(fmt.Sprintf(`<w:p><w:r><w:t>%s</w:t></w:r></w:p>`, escapeXML(line)))
+			_, _ = fmt.Fprintf(&sb, `<w:p><w:r><w:t>%s</w:t></w:r></w:p>`, escapeXML(line))
 		}
 	}
 	return sb.String()

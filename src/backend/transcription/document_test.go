@@ -13,7 +13,7 @@ import (
 // fakeFile wraps a bytes.Reader to satisfy the multipart.File interface.
 type fakeFile struct{ *bytes.Reader }
 
-func (f *fakeFile) Close() error                          { return nil }
+func (f *fakeFile) Close() error                            { return nil }
 func (f *fakeFile) ReadAt(p []byte, off int64) (int, error) { return f.Reader.ReadAt(p, off) }
 
 func newFakeFile(data string) multipart.File {
@@ -89,8 +89,8 @@ func TestExtractText_TXTSeekReset(t *testing.T) {
 	f := &fakeFile{bytes.NewReader([]byte(content))}
 
 	// Exhaust the reader first, then reset — ExtractText should still return full content.
-	io.ReadAll(f)
-	f.Seek(0, io.SeekStart)
+	_, _ = io.ReadAll(f)
+	_, _ = f.Seek(0, io.SeekStart)
 
 	got, err := transcription.ExtractText(f, "text/plain")
 	if err != nil {

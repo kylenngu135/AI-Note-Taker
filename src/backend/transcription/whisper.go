@@ -29,7 +29,9 @@ func TranscribeAudio(file multipart.File, filename string) (string, error) {
 		return "", fmt.Errorf("failed to write model field: %w", err)
 	}
 
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("failed to close multipart writer: %w", err)
+	}
 
 	req, err := http.NewRequest(http.MethodPost, OpenAIBaseURL+"/v1/audio/transcriptions", body)
 	if err != nil {
@@ -42,7 +44,7 @@ func TranscribeAudio(file multipart.File, filename string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to call whisper service: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)

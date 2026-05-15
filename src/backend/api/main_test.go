@@ -22,12 +22,12 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	os.Setenv("JWT_SECRET", "test-secret")
-	os.Setenv("R2_BUCKET_NAME", "test-bucket")
+	_ = os.Setenv("JWT_SECRET", "test-secret")
+	_ = os.Setenv("R2_BUCKET_NAME", "test-bucket")
 
 	fakeOpenAIServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"choices": []map[string]interface{}{
 				{"message": map[string]string{"content": "Generated study sheet"}},
 			},
@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 
 	fakeWhisperServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"text": "Transcribed audio text"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"text": "Transcribed audio text"})
 	}))
 	transcription.OpenAIBaseURL = fakeWhisperServer.URL
 

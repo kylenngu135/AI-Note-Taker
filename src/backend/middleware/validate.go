@@ -1,12 +1,18 @@
 package middleware
 
 import (
-	"net/http"
-	"github.com/golang-jwt/jwt/v5"
-	"fmt"
-	"os"
 	"context"
+	"fmt"
+	"github.com/golang-jwt/jwt/v5"
+	"net/http"
+	"os"
 )
+
+// ContextKey is the type used for context keys set by this package.
+type ContextKey string
+
+// ClaimsKey is the context key under which JWT claims are stored.
+const ClaimsKey ContextKey = "claims"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,13 +30,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
-	
- 		ctx := context.WithValue(r.Context(), "claims", claims)
+
+		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
 
 		// 3. Store claims in request context
 		r = r.WithContext(ctx)
-
-			
 
 		// 4. Continue to handler
 		next.ServeHTTP(w, r)

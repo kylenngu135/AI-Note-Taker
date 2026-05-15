@@ -36,17 +36,13 @@ func InitR2(accountID, accessKeyID, secretAccessKey string) error {
 				SecretAccessKey: secretAccessKey,
 			}, nil
 		})),
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint, HostnameImmutable: true}, nil
-			}),
-		),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endpoint)
 		if testEndpoint != "" {
 			o.UsePathStyle = true
 		}
@@ -94,7 +90,7 @@ func DownloadFile(ctx context.Context, key, bucket string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file body: %w", err)

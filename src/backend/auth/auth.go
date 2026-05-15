@@ -5,15 +5,15 @@ import (
 	"AI-Note-Taker/middleware"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"log"
 	"net/http"
 	"net/mail"
 	"os"
 	"time"
-	"log"
-	"fmt"
 )
 
 const COMP_COST = 12
@@ -86,11 +86,9 @@ func (h *Handler) RegisterUserHandler(w http.ResponseWriter, r *http.Request) {
 	// send response
 	w.Header().Set("Content-type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"token": jwtToken,
 	})
-
-	return
 }
 
 func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +103,6 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to decode input", http.StatusInternalServerError)
 	}
-
 
 	//TODO:Redundant Code, check to see if you can remove
 
@@ -158,48 +155,44 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Change what we return in the body
 
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"token": jwtToken,
 	})
-
-	return
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-    http.SetCookie(w, &http.Cookie{
-        Name:     "auth_token",
-        Value:    "",
-        MaxAge:   -1,
-        Path:     "/",
-        HttpOnly: true,
-        Secure:   true,
-        SameSite: http.SameSiteStrictMode,
-    })
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
-    w.WriteHeader(http.StatusOK)
-
-	return
+	w.WriteHeader(http.StatusOK)
 }
 
 func UserDataHandler(w http.ResponseWriter, r *http.Request) {
-    cookie, err := r.Cookie("auth_token")
-    if err != nil {
-        http.Error(w, "unauthorized", http.StatusUnauthorized)
-        return
-    }
+	cookie, err := r.Cookie("auth_token")
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-    claims, err := middleware.ValidateJWT(cookie.Value)
-    if err != nil {
-        http.Error(w, "invalid token", http.StatusUnauthorized)
-        return
-    }
+	claims, err := middleware.ValidateJWT(cookie.Value)
+	if err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(map[string]string{
-        "user_id": (*claims)["user_id"].(string),
-        "email":   (*claims)["email"].(string),
-    })
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"user_id": (*claims)["user_id"].(string),
+		"email":   (*claims)["email"].(string),
+	})
 }
 
 func isValidEmail(email string) bool {
@@ -226,14 +219,12 @@ func generateJWT(userID, email string) (string, error) {
 
 func createCookie(w http.ResponseWriter, jwtToken string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: 		"auth_token",
-		Value: 		jwtToken,
-		HttpOnly: 	true,
-		Secure: 	true,
-		SameSite:	http.SameSiteStrictMode,
-		Path:		"/",
-		MaxAge:		86400,
+		Name:     "auth_token",
+		Value:    jwtToken,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		MaxAge:   86400,
 	})
-
-	return
 }

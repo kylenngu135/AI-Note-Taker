@@ -37,7 +37,7 @@ func main() {
 	if err != nil {
 		log.Println("failed to open database:", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err = db.Ping(); err != nil {
 		log.Println("failed to connect to database:", err)

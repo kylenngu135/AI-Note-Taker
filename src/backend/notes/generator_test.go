@@ -21,7 +21,7 @@ func mockOpenAIServer(t *testing.T, content string, statusCode int) *httptest.Se
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		if statusCode == http.StatusOK {
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"choices": []map[string]interface{}{
 					{"message": map[string]string{"content": content}},
 				},
@@ -68,7 +68,7 @@ func TestGenerateStudySheet_ParsesTags(t *testing.T) {
 func TestGenerateStudySheet_EmptyChoices(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{}})
 	}))
 	defer srv.Close()
 	notes.OpenAIBaseURL = srv.URL
@@ -81,7 +81,7 @@ func TestGenerateStudySheet_EmptyChoices(t *testing.T) {
 
 func TestGenerateStudySheet_InvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	notes.OpenAIBaseURL = srv.URL
@@ -113,9 +113,9 @@ func TestRegenerateStudySheetWithHistory_Success(t *testing.T) {
 func TestRegenerateStudySheetWithHistory_SendsFullHistory(t *testing.T) {
 	var received notes.ChatRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&received)
+		_ = json.NewDecoder(r.Body).Decode(&received)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"choices": []map[string]interface{}{
 				{"message": map[string]string{"content": "response"}},
 			},
@@ -128,7 +128,7 @@ func TestRegenerateStudySheetWithHistory_SendsFullHistory(t *testing.T) {
 		{Role: "user", Content: "turn 1"},
 		{Role: "assistant", Content: "response 1"},
 	}
-	notes.RegenerateStudySheetWithHistory(history, "new prompt")
+	_, _ = notes.RegenerateStudySheetWithHistory(history, "new prompt")
 
 	// system prompt + 2 history messages + new user prompt = 4
 	if len(received.Messages) != 4 {
@@ -146,7 +146,7 @@ func TestRegenerateStudySheetWithHistory_SendsFullHistory(t *testing.T) {
 func TestRegenerateStudySheetWithHistory_EmptyChoices(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"choices": []interface{}{}})
 	}))
 	defer srv.Close()
 	notes.OpenAIBaseURL = srv.URL

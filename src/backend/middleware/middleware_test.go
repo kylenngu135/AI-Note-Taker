@@ -3,7 +3,6 @@ package middleware_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -73,7 +72,7 @@ func TestEnableCORS_AllowedMethodsHeader(t *testing.T) {
 // --- ValidateJWT ---
 
 func TestValidateJWT_ValidToken(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	token := makeToken("test-secret", jwt.MapClaims{
 		"user_id": "uid-1",
@@ -91,7 +90,7 @@ func TestValidateJWT_ValidToken(t *testing.T) {
 }
 
 func TestValidateJWT_InvalidSignature(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	token := makeToken("wrong-secret", jwt.MapClaims{
 		"user_id": "uid-1",
@@ -105,7 +104,7 @@ func TestValidateJWT_InvalidSignature(t *testing.T) {
 }
 
 func TestValidateJWT_ExpiredToken(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	token := makeToken("test-secret", jwt.MapClaims{
 		"user_id": "uid-1",
@@ -119,7 +118,7 @@ func TestValidateJWT_ExpiredToken(t *testing.T) {
 }
 
 func TestValidateJWT_MalformedToken(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	_, err := middleware.ValidateJWT("not.a.jwt")
 	if err == nil {
@@ -130,7 +129,7 @@ func TestValidateJWT_MalformedToken(t *testing.T) {
 // --- AuthMiddleware ---
 
 func TestAuthMiddleware_NoCookie(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	handler := middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -146,7 +145,7 @@ func TestAuthMiddleware_NoCookie(t *testing.T) {
 }
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	handler := middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -163,7 +162,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 }
 
 func TestAuthMiddleware_ValidToken_PassesThrough(t *testing.T) {
-	os.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("JWT_SECRET", "test-secret")
 
 	reached := false
 	handler := middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

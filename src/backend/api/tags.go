@@ -30,7 +30,7 @@ func (h *Handler) GetTagsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tags)
+	_ = json.NewEncoder(w).Encode(tags)
 }
 
 func (h *Handler) CreateTagHandler(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +65,7 @@ func (h *Handler) CreateTagHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(tag)
+	_ = json.NewEncoder(w).Encode(tag)
 }
 
 func (h *Handler) DeleteTagHandler(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +130,7 @@ func (h *Handler) AddTagToUploadHandler(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(tag)
+	_ = json.NewEncoder(w).Encode(tag)
 }
 
 func (h *Handler) RemoveTagFromUploadHandler(w http.ResponseWriter, r *http.Request) {

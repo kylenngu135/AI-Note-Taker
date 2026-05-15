@@ -30,7 +30,7 @@ func TestTranscribeAudio_Success(t *testing.T) {
 			t.Error("expected multipart form with 'file' field")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"text": "hello world"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"text": "hello world"})
 	}))
 	defer srv.Close()
 	transcription.OpenAIBaseURL = srv.URL
@@ -62,7 +62,7 @@ func TestTranscribeAudio_ServiceReturnsNon200(t *testing.T) {
 func TestTranscribeAudio_InvalidJSONResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	transcription.OpenAIBaseURL = srv.URL

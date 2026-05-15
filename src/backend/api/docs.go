@@ -25,11 +25,11 @@ const docsHTML = `<!DOCTYPE html>
 func DocsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(docsHTML))
+	_, _ = w.Write([]byte(docsHTML))
 }
 
 func OpenAPISpecHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/yaml")
 	w.WriteHeader(http.StatusOK)
-	w.Write(openapiSpec)
+	_, _ = w.Write(openapiSpec)
 }

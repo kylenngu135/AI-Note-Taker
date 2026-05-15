@@ -33,7 +33,7 @@ func newHandler(t *testing.T) (*api.Handler, sqlmock.Sqlmock) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return &api.Handler{DB: db}, mock
 }
 
@@ -408,7 +408,7 @@ func TestRegenerateNoteHandler_Success(t *testing.T) {
 	).WillReturnRows(updatedNoteRows)
 
 	body := new(bytes.Buffer)
-	json.NewEncoder(body).Encode(map[string]string{"prompt": "expand this"})
+	_ = json.NewEncoder(body).Encode(map[string]string{"prompt": "expand this"})
 
 	req := authedRequest(t, http.MethodPost, "/api/uploads/upload-id/notes/regenerate", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -458,7 +458,7 @@ func TestRegenerateNoteHandler_NoteNotFound(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 
 	body := new(bytes.Buffer)
-	json.NewEncoder(body).Encode(map[string]string{"prompt": "expand"})
+	_ = json.NewEncoder(body).Encode(map[string]string{"prompt": "expand"})
 
 	req := authedRequest(t, http.MethodPost, "/api/uploads/upload-id/notes/regenerate", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -491,8 +491,8 @@ func txtMultipart(t *testing.T, content string) (*bytes.Buffer, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	part.Write([]byte(content))
-	writer.Close()
+	_, _ = part.Write([]byte(content))
+	_ = writer.Close()
 	return &body, writer.FormDataContentType()
 }
 
@@ -501,8 +501,8 @@ func TestUploadHandler_NoFile(t *testing.T) {
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	writer.WriteField("other", "value")
-	writer.Close()
+	_ = writer.WriteField("other", "value")
+	_ = writer.Close()
 
 	req := authedRequest(t, http.MethodPost, "/api/uploads", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -523,8 +523,8 @@ func TestUploadHandler_UnsupportedFileType(t *testing.T) {
 	mh.Set("Content-Disposition", `form-data; name="file"; filename="image.png"`)
 	mh.Set("Content-Type", "image/png")
 	part, _ := writer.CreatePart(mh)
-	part.Write([]byte("PNG data"))
-	writer.Close()
+	_, _ = part.Write([]byte("PNG data"))
+	_ = writer.Close()
 
 	req := authedRequest(t, http.MethodPost, "/api/uploads", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -540,33 +540,25 @@ func TestUploadHandler_TXTSuccess(t *testing.T) {
 	h, mock := newHandler(t)
 	now := time.Now()
 
+	// Fake Upstash Redis: any POST returns a successful LPUSH result.
+	fakeRedis := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": 1})
+	}))
+	defer fakeRedis.Close()
+	t.Setenv("REDIS_URL", fakeRedis.URL)
+
+	// insertUploadPending: 5 args — status 'pending' is hardcoded in the SQL, not a parameter.
 	mock.ExpectQuery("INSERT INTO uploads").
-		WithArgs(sqlmock.AnyArg(), "test.txt", "text/plain", sqlmock.AnyArg(), sqlmock.AnyArg(), "complete").
+		WithArgs(sqlmock.AnyArg(), "test.txt", "text/plain", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "filename", "file_type", "file_size", "storage_key", "status", "created_at",
-		}).AddRow("upload-uuid", "test.txt", "text/plain", int64(24), "transcriptions/upload-uuid.txt", "complete", now))
+		}).AddRow("upload-uuid", "test.txt", "text/plain", int64(520), "raw/upload-uuid", "pending", now))
 
-	mock.ExpectQuery("INSERT INTO notes").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "upload_id", "content", "storage_key", "created_at", "last_updated_at",
-		}).AddRow("note-uuid", "upload-uuid", "Generated study sheet", "transcriptions/note-uuid.txt", now, now))
-
-	histRow1 := sqlmock.NewRows([]string{
-		"id", "note_id", "upload_id", "role", "prompt", "content", "storage_key", "created_at",
-	}).AddRow("h1", "note-uuid", "upload-uuid", "user", "transcript text", "", "k1", now)
-
-	histRow2 := sqlmock.NewRows([]string{
-		"id", "note_id", "upload_id", "role", "prompt", "content", "storage_key", "created_at",
-	}).AddRow("h2", "note-uuid", "upload-uuid", "assistant", "", "Generated study sheet", "k2", now)
-
-	mock.ExpectQuery("INSERT INTO note_history").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "user", sqlmock.AnyArg(), "", sqlmock.AnyArg()).
-		WillReturnRows(histRow1)
-
-	mock.ExpectQuery("INSERT INTO note_history").
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "assistant", "", sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnRows(histRow2)
+	// InsertJobRecord: INSERT INTO jobs (id, status, file_key) VALUES ($1, 'pending', $2)
+	mock.ExpectExec("INSERT INTO jobs").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	body, ct := txtMultipart(t, "Study this content please.")
 	req := authedRequest(t, http.MethodPost, "/api/uploads", body)
@@ -574,13 +566,16 @@ func TestUploadHandler_TXTSuccess(t *testing.T) {
 	rr := httptest.NewRecorder()
 	middleware.AuthMiddleware(http.HandlerFunc(h.UploadHandler)).ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Errorf("status = %d, want 201; body: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want 202; body: %s", rr.Code, rr.Body.String())
 	}
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
-	if resp["message"] != "upload successful" {
-		t.Errorf("message = %q, want 'upload successful'", resp["message"])
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
+	if resp["job_id"] == "" {
+		t.Errorf("response missing 'job_id'")
+	}
+	if resp["upload_id"] == "" {
+		t.Errorf("response missing 'upload_id'")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)

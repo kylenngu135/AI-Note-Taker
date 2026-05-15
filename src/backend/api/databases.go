@@ -60,30 +60,6 @@ type UploadListItem struct {
 	Tags      []Tag     `json:"tags"`
 }
 
-func insertUpload(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey string) (Upload, error) {
-	query := `
-        INSERT INTO uploads (id, filename, file_type, file_size, storage_key, status)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, filename, file_type, file_size, storage_key, status, created_at
-    `
-
-	var upload Upload
-	err := database.QueryRow(query, uploadID, filename, fileType, fileSize, storageKey, "complete").Scan(
-		&upload.ID,
-		&upload.Filename,
-		&upload.FileType,
-		&upload.FileSize,
-		&upload.StorageKey,
-		&upload.Status,
-		&upload.CreatedAt,
-	)
-	if err != nil {
-		return Upload{}, fmt.Errorf("failed to insert upload: %w", err)
-	}
-
-	return upload, nil
-}
-
 // insertUploadPending creates an upload row with status "pending" before async processing begins.
 func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey string) (Upload, error) {
 	query := `
@@ -105,36 +81,6 @@ func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, 
 		return Upload{}, fmt.Errorf("failed to insert upload: %w", err)
 	}
 	return upload, nil
-}
-
-func getAllUploads(database *sql.DB) (uploads []Upload, err error) {
-	query := `SELECT * FROM uploads;`
-
-	rows, err := database.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get uploads: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var upload Upload
-		err := rows.Scan(
-			&upload.ID,
-			&upload.Filename,
-			&upload.FileType,
-			&upload.FileSize,
-			&upload.StorageKey,
-			&upload.Status,
-			&upload.CreatedAt,
-			&upload.LastUpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan upload: %w", err)
-		}
-		uploads = append(uploads, upload)
-	}
-
-	return
 }
 
 func getAllUploadIDsWithTags(database *sql.DB, tagFilter string) ([]UploadListItem, error) {
@@ -182,7 +128,7 @@ func getAllUploadIDsWithTags(database *sql.DB, tagFilter string) ([]UploadListIt
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uploads: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var uploads []UploadListItem
 	for rows.Next() {
@@ -279,28 +225,6 @@ func getNoteByUploadID(database *sql.DB, uploadID string) (Note, error) {
 	return note, nil
 }
 
-func insertNote(database *sql.DB, noteID, uploadID, content, storageKey string) (Note, error) {
-	query := `
-        INSERT INTO notes (id, upload_id, content, storage_key)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, upload_id, content, storage_key, created_at, last_updated_at
-    `
-	var note Note
-	err := database.QueryRow(query, noteID, uploadID, content, storageKey).Scan(
-		&note.ID,
-		&note.UploadID,
-		&note.Content,
-		&note.StorageKey,
-		&note.CreatedAt,
-		&note.LastUpdatedAt,
-	)
-	if err != nil {
-		return Note{}, fmt.Errorf("failed to insert note: %w", err)
-	}
-
-	return note, nil
-}
-
 func UpdateNote(database *sql.DB, noteID, content, storageKey string) (Note, error) {
 	query := `UPDATE notes SET content = $1, storage_key = $2 WHERE id = $3 RETURNING id, upload_id, content, storage_key, created_at, last_updated_at`
 
@@ -357,7 +281,7 @@ func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get note history: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var history []NoteHistory
 	for rows.Next() {
@@ -448,7 +372,7 @@ func getTagsByNoteID(database *sql.DB, noteID string) ([]Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tags: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tags []Tag
 	for rows.Next() {
@@ -473,7 +397,7 @@ func getAllTagsForUser(database *sql.DB, userID string) ([]Tag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tags: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tags []Tag
 	for rows.Next() {
