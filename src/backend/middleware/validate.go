@@ -3,9 +3,10 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"os"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ContextKey is the type used for context keys set by this package.
@@ -13,6 +14,25 @@ type ContextKey string
 
 // ClaimsKey is the context key under which JWT claims are stored.
 const ClaimsKey ContextKey = "claims"
+
+// GetUserIDFromContext extracts the authenticated user's ID from ctx.
+// Returns an error if no claims are present or the user_id claim is
+// missing or empty — callers should map this to a 401.
+func GetUserIDFromContext(ctx context.Context) (string, error) {
+	raw := ctx.Value(ClaimsKey)
+	if raw == nil {
+		return "", fmt.Errorf("no auth claims in context")
+	}
+	claims, ok := raw.(*jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("unexpected claims type in context")
+	}
+	userID, ok := (*claims)["user_id"].(string)
+	if !ok || userID == "" {
+		return "", fmt.Errorf("user_id not found in JWT claims")
+	}
+	return userID, nil
+}
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

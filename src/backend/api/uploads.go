@@ -12,7 +12,6 @@ import (
 	"os"
 	"strings"
 
-	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
 
@@ -30,28 +29,21 @@ type RegenerateRequest struct {
 	Prompt string `json:"prompt"`
 }
 
-func getUserIDFromContext(r *http.Request) string {
-	raw := r.Context().Value(middleware.ClaimsKey)
-	if raw == nil {
-		return ""
-	}
-	claims, ok := raw.(*jwt.MapClaims)
-	if !ok {
-		return ""
-	}
-	userID, _ := (*claims)["user_id"].(string)
-	return userID
-}
-
 func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	id := r.PathValue("id")
 
-	upload, err := GetUploadByID(h.DB, id)
+	upload, err := GetUploadByIDAndUserID(h.DB, id, userID)
 	if err != nil {
 		http.Error(w, "upload not found", http.StatusNotFound)
 		return
@@ -92,8 +84,14 @@ func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	tagFilter := r.URL.Query().Get("tag")
-	uploads, err := getAllUploadIDsWithTags(h.DB, tagFilter)
+	uploads, err := getAllUploadIDsWithTags(h.DB, userID, tagFilter)
 	if err != nil {
 		http.Error(w, "failed to upload", http.StatusInternalServerError)
 		return
@@ -114,7 +112,19 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	id := r.PathValue("id")
+
+	if _, err := GetUploadByIDAndUserID(h.DB, id, userID); err != nil {
+		http.Error(w, "upload not found", http.StatusNotFound)
+		return
+	}
+
 	format := r.URL.Query().Get("format")
 
 	noteWithHistory, err := GetNoteWithHistoryByUploadID(h.DB, id)
@@ -213,12 +223,24 @@ func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	id := r.PathValue("id")
 
 	// Decode request body
 	var reqBody RegenerateRequest
 	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Verify ownership before any further work
+	if _, err := GetUploadByIDAndUserID(h.DB, id, userID); err != nil {
+		http.Error(w, "upload not found", http.StatusNotFound)
 		return
 	}
 
@@ -310,6 +332,12 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "no file provided", http.StatusBadRequest)
@@ -344,7 +372,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the upload row immediately with status "pending".
-	if _, err = insertUploadPending(h.DB, uploadID, header.Filename, fileType, header.Size, rawKey); err != nil {
+	if _, err = insertUploadPending(h.DB, uploadID, header.Filename, fileType, header.Size, rawKey, userID); err != nil {
 		log.Println("Failed to insert upload:", err.Error())
 		http.Error(w, "failed to save upload", http.StatusInternalServerError)
 		return
@@ -365,7 +393,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		FileKey:  rawKey,
 		Filename: header.Filename,
 		FileSize: header.Size,
-		UserID:   getUserIDFromContext(r),
+		UserID:   userID,
 	}
 
 	if err = queue.EnqueueJob(job); err != nil {

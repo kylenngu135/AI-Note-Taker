@@ -61,14 +61,14 @@ type UploadListItem struct {
 }
 
 // insertUploadPending creates an upload row with status "pending" before async processing begins.
-func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey string) (Upload, error) {
+func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey, userID string) (Upload, error) {
 	query := `
-        INSERT INTO uploads (id, filename, file_type, file_size, storage_key, status)
-        VALUES ($1, $2, $3, $4, $5, 'pending')
+        INSERT INTO uploads (id, filename, file_type, file_size, storage_key, status, user_id)
+        VALUES ($1, $2, $3, $4, $5, 'pending', $6)
         RETURNING id, filename, file_type, file_size, storage_key, status, created_at
     `
 	var upload Upload
-	err := database.QueryRow(query, uploadID, filename, fileType, fileSize, storageKey).Scan(
+	err := database.QueryRow(query, uploadID, filename, fileType, fileSize, storageKey, userID).Scan(
 		&upload.ID,
 		&upload.Filename,
 		&upload.FileType,
@@ -83,7 +83,7 @@ func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, 
 	return upload, nil
 }
 
-func getAllUploadIDsWithTags(database *sql.DB, tagFilter string) ([]UploadListItem, error) {
+func getAllUploadIDsWithTags(database *sql.DB, userID, tagFilter string) ([]UploadListItem, error) {
 	baseCols := `
 		SELECT
 			u.id, u.filename, u.created_at,
@@ -106,22 +106,24 @@ func getAllUploadIDsWithTags(database *sql.DB, tagFilter string) ([]UploadListIt
 
 	if tagFilter != "" {
 		query = baseCols + `
-		WHERE u.id IN (
+		WHERE u.user_id = $1 AND u.id IN (
 			SELECT DISTINCT u2.id FROM uploads u2
 			JOIN notes n2 ON n2.upload_id = u2.id
 			JOIN note_tags nt2 ON nt2.note_id = n2.id
 			JOIN tags t2 ON t2.id = nt2.tag_id
-			WHERE LOWER(t2.name) = LOWER($1)
+			WHERE LOWER(t2.name) = LOWER($2)
 		)
 		GROUP BY u.id, u.filename, u.created_at, u.last_updated_at
 		ORDER BY u.last_updated_at DESC
 		`
-		args = []interface{}{tagFilter}
+		args = []interface{}{userID, tagFilter}
 	} else {
 		query = baseCols + `
+		WHERE u.user_id = $1
 		GROUP BY u.id, u.filename, u.created_at, u.last_updated_at
 		ORDER BY u.last_updated_at DESC
 		`
+		args = []interface{}{userID}
 	}
 
 	rows, err := database.Query(query, args...)
@@ -200,6 +202,32 @@ func GetUploadByID(database *sql.DB, id string) (Upload, error) {
 		return Upload{}, fmt.Errorf("failed to get upload: %w", err)
 	}
 
+	return upload, nil
+}
+
+// GetUploadByIDAndUserID returns the upload only when it exists AND belongs to
+// userID. A missing upload and a wrong-owner upload both return an error so
+// callers can safely map the result to a 404 without revealing existence.
+func GetUploadByIDAndUserID(database *sql.DB, id, userID string) (Upload, error) {
+	query := `SELECT id, filename, file_type, file_size, storage_key, status, created_at, last_updated_at
+	          FROM uploads WHERE id = $1 AND user_id = $2`
+	var upload Upload
+	err := database.QueryRow(query, id, userID).Scan(
+		&upload.ID,
+		&upload.Filename,
+		&upload.FileType,
+		&upload.FileSize,
+		&upload.StorageKey,
+		&upload.Status,
+		&upload.CreatedAt,
+		&upload.LastUpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return Upload{}, fmt.Errorf("upload not found")
+	}
+	if err != nil {
+		return Upload{}, fmt.Errorf("failed to get upload: %w", err)
+	}
 	return upload, nil
 }
 

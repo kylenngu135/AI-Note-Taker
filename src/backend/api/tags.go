@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+
+	"AI-Note-Taker/middleware"
 )
 
 type CreateTagRequest struct {
@@ -13,8 +15,8 @@ type CreateTagRequest struct {
 }
 
 func (h *Handler) GetTagsHandler(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-	if userID == "" {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -34,8 +36,8 @@ func (h *Handler) GetTagsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateTagHandler(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-	if userID == "" {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -69,8 +71,8 @@ func (h *Handler) CreateTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteTagHandler(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-	if userID == "" {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -86,8 +88,8 @@ func (h *Handler) DeleteTagHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddTagToUploadHandler(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-	if userID == "" {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -134,8 +136,8 @@ func (h *Handler) AddTagToUploadHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) RemoveTagFromUploadHandler(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-	if userID == "" {
+	userID, err := middleware.GetUserIDFromContext(r.Context())
+	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

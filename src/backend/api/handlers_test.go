@@ -49,6 +49,15 @@ func authedRequest(t *testing.T, method, target string, body *bytes.Buffer) *htt
 	return req
 }
 
+// uploadOwnerRows returns a sqlmock row set that satisfies GetUploadByIDAndUserID
+// (SELECT … FROM uploads WHERE id=$1 AND user_id=$2).
+func uploadOwnerRows(id string) *sqlmock.Rows {
+	now := time.Now()
+	return sqlmock.NewRows([]string{
+		"id", "filename", "file_type", "file_size", "storage_key", "status", "created_at", "last_updated_at",
+	}).AddRow(id, "file.txt", "text/plain", int64(10), "key", "complete", now, now)
+}
+
 // --- DocsHandler / OpenAPISpecHandler ---
 
 func TestDocsHandler_ReturnsHTML(t *testing.T) {
@@ -177,7 +186,7 @@ func TestDeleteUploadHandler_Success(t *testing.T) {
 	h, mock := newHandler(t)
 	uploadRows, noteRows, histRows := deleteUploadRows(t)
 
-	mock.ExpectQuery("SELECT id, filename").WithArgs("del-id").WillReturnRows(uploadRows)
+	mock.ExpectQuery("SELECT id, filename").WithArgs("del-id", "test-user-id").WillReturnRows(uploadRows)
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("del-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id").WithArgs("del-id").WillReturnRows(histRows)
 	mock.ExpectExec("DELETE FROM note_history").WithArgs("del-id").WillReturnResult(sqlmock.NewResult(0, 0))
@@ -203,7 +212,7 @@ func TestDeleteUploadHandler_UploadNotFound(t *testing.T) {
 	h, mock := newHandler(t)
 
 	mock.ExpectQuery("SELECT id, filename").
-		WithArgs("missing-id").
+		WithArgs("missing-id", "test-user-id").
 		WillReturnError(sql.ErrNoRows)
 
 	req := authedRequest(t, http.MethodDelete, "/api/uploads/missing-id", nil)
@@ -240,7 +249,7 @@ func TestGetNoteByUploadIDHandler_JSONResponse(t *testing.T) {
 	h, mock := newHandler(t)
 	noteRows, histRows := noteWithHistoryRows(t)
 
-	// GetNoteByUploadIDHandler calls GetNoteWithHistoryByUploadID once (notes query + history query).
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("upload-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id").WithArgs("upload-id").WillReturnRows(histRows)
 
@@ -275,6 +284,7 @@ func TestGetNoteByUploadIDHandler_TXTDownload(t *testing.T) {
 	histRows := sqlmock.NewRows([]string{
 		"id", "note_id", "upload_id", "role", "prompt", "content", "storage_key", "created_at",
 	})
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("upload-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id").WithArgs("upload-id").WillReturnRows(histRows)
 
@@ -306,6 +316,7 @@ func TestGetNoteByUploadIDHandler_PDFDownload(t *testing.T) {
 	histRows := sqlmock.NewRows([]string{
 		"id", "note_id", "upload_id", "role", "prompt", "content", "storage_key", "created_at",
 	})
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("upload-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id").WithArgs("upload-id").WillReturnRows(histRows)
 
@@ -333,6 +344,7 @@ func TestGetNoteByUploadIDHandler_DOCXDownload(t *testing.T) {
 	histRows := sqlmock.NewRows([]string{
 		"id", "note_id", "upload_id", "role", "prompt", "content", "storage_key", "created_at",
 	})
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("upload-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id").WithArgs("upload-id").WillReturnRows(histRows)
 
@@ -351,6 +363,7 @@ func TestGetNoteByUploadIDHandler_DOCXDownload(t *testing.T) {
 func TestGetNoteByUploadIDHandler_DBError(t *testing.T) {
 	h, mock := newHandler(t)
 
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").
 		WithArgs("upload-id").
 		WillReturnError(sql.ErrConnDone)
@@ -393,6 +406,7 @@ func TestRegenerateNoteHandler_Success(t *testing.T) {
 		"id", "upload_id", "content", "storage_key", "created_at", "last_updated_at",
 	}).AddRow("note-id", "upload-id", "Generated study sheet", "new-key", now, now)
 
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").WithArgs("upload-id").WillReturnRows(noteRows)
 	mock.ExpectQuery("SELECT id, note_id, upload_id, role").WithArgs("upload-id").WillReturnRows(histRows)
 	mock.ExpectQuery("INSERT INTO note_history").WithArgs(
@@ -453,6 +467,7 @@ func TestRegenerateNoteHandler_InvalidBody(t *testing.T) {
 func TestRegenerateNoteHandler_NoteNotFound(t *testing.T) {
 	h, mock := newHandler(t)
 
+	mock.ExpectQuery("SELECT id, filename").WithArgs("upload-id", "test-user-id").WillReturnRows(uploadOwnerRows("upload-id"))
 	mock.ExpectQuery("SELECT id, upload_id, content").
 		WithArgs("upload-id").
 		WillReturnError(sql.ErrNoRows)
@@ -548,9 +563,9 @@ func TestUploadHandler_TXTSuccess(t *testing.T) {
 	defer fakeRedis.Close()
 	t.Setenv("REDIS_URL", fakeRedis.URL)
 
-	// insertUploadPending: 5 args — status 'pending' is hardcoded in the SQL, not a parameter.
+	// insertUploadPending: 6 args — uploadID, filename, fileType, fileSize, storageKey, userID.
 	mock.ExpectQuery("INSERT INTO uploads").
-		WithArgs(sqlmock.AnyArg(), "test.txt", "text/plain", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(sqlmock.AnyArg(), "test.txt", "text/plain", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "filename", "file_type", "file_size", "storage_key", "status", "created_at",
 		}).AddRow("upload-uuid", "test.txt", "text/plain", int64(520), "raw/upload-uuid", "pending", now))

@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,68 @@ func makeToken(secret string, claims jwt.MapClaims) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, _ := tok.SignedString([]byte(secret))
 	return signed
+}
+
+// --- GetUserIDFromContext ---
+
+func TestGetUserIDFromContext_ValidClaims(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+
+	token := makeToken("test-secret", jwt.MapClaims{
+		"user_id": "uid-42",
+		"email":   "a@b.com",
+		"exp":     time.Now().Add(time.Hour).Unix(),
+	})
+
+	claims, err := middleware.ValidateJWT(token)
+	if err != nil {
+		t.Fatalf("ValidateJWT: %v", err)
+	}
+
+	ctx := context.WithValue(context.Background(), middleware.ClaimsKey, claims)
+	got, err := middleware.GetUserIDFromContext(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "uid-42" {
+		t.Errorf("user_id = %q, want uid-42", got)
+	}
+}
+
+func TestGetUserIDFromContext_NoClaims(t *testing.T) {
+	_, err := middleware.GetUserIDFromContext(context.Background())
+	if err == nil {
+		t.Error("expected error for context with no claims, got nil")
+	}
+}
+
+func TestGetUserIDFromContext_WrongType(t *testing.T) {
+	ctx := context.WithValue(context.Background(), middleware.ClaimsKey, "not-claims")
+	_, err := middleware.GetUserIDFromContext(ctx)
+	if err == nil {
+		t.Error("expected error for wrong claims type, got nil")
+	}
+}
+
+func TestGetUserIDFromContext_MissingUserID(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+
+	// Token with no user_id claim
+	token := makeToken("test-secret", jwt.MapClaims{
+		"email": "a@b.com",
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	claims, err := middleware.ValidateJWT(token)
+	if err != nil {
+		t.Fatalf("ValidateJWT: %v", err)
+	}
+
+	ctx := context.WithValue(context.Background(), middleware.ClaimsKey, claims)
+	_, err = middleware.GetUserIDFromContext(ctx)
+	if err == nil {
+		t.Error("expected error for missing user_id claim, got nil")
+	}
 }
 
 // --- EnableCORS ---
