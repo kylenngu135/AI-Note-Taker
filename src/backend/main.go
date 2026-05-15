@@ -82,10 +82,9 @@ func main() {
 
 	// static server for hosting on localhost:8080
 	if os.Getenv("APP_ENV") != "production" {
-		fs_ui := http.FileServer(http.Dir("../ui"))
 		fs_frontend := http.FileServer(http.Dir("../frontend"))
 		mainMux.Handle("/frontend/", http.StripPrefix("/frontend/", fs_frontend))
-		mainMux.Handle("/", fs_ui)
+		mainMux.Handle("/", fs_frontend)
 	}
 
 	port := os.Getenv("PORT")
