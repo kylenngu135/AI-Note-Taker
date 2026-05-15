@@ -1,5 +1,7 @@
 // frontend/ui.js
 
+const API_BASE_URL = "https://ai-note-taker-j35g.onrender.com";
+
 // Switch to the welcome/upload view
 function showWelcomeView() {
     document.getElementById("welcomeView").classList.remove("hidden");
@@ -18,7 +20,7 @@ function showWelcomeView() {
 document.getElementById("newChatBtn").addEventListener("click", showWelcomeView);
 
 async function updateAuthButton() {
-    const response = await fetch("http://localhost:8080/api/auth/me", {
+    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         credentials: "include"
     });
 
@@ -29,7 +31,7 @@ async function updateAuthButton() {
         signInBtn.href = "#";
         signInBtn.addEventListener("click", async (e) => {
             e.preventDefault();
-            await fetch("http://localhost:8080/api/auth/logout", {
+            await fetch(`${API_BASE_URL}/api/auth/logout`, {
                 method: "POST",
                 credentials: "include"
             });

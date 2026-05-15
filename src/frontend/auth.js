@@ -1,4 +1,4 @@
-const AUTH_URL = "http://localhost:8080/api/auth"
+const AUTH_URL = "https://ai-note-taker-j35g.onrender.com/api/auth"
 
 function addButtonListeners() {
     document.getElementById("registerButton").addEventListener("click", () => {

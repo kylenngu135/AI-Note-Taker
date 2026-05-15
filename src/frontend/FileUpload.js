@@ -1,6 +1,6 @@
 import { loadUploads, loadNotesById } from './notes.js';
 
-const UPLOADS_BASE_URL = "http://localhost:8080/api/uploads";
+const UPLOADS_BASE_URL = "https://ai-note-taker-j35g.onrender.com/api/uploads";
 
 export function addUploadButtonListeners() {
     document.getElementById("uploadButton").addEventListener("click", uploadFile);

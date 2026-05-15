@@ -1,7 +1,7 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
-const API_BASE_URL = "http://localhost:8080/api";
-const UPLOADS_URL = `${API_BASE_URL}/uploads`;
+const API_BASE_URL = "https://ai-note-taker-j35g.onrender.com";
+const UPLOADS_URL = `${API_BASE_URL}/api/uploads`;
 
 const TAG_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280'];
 

@@ -1,6 +1,6 @@
 import { getCurrentUploadId } from './notes.js';
 
-const UPLOADS_BASE_URL = "http://localhost:8080/api/uploads";
+const UPLOADS_BASE_URL = "https://ai-note-taker-j35g.onrender.com/api/uploads";
 
 export function addDeleteButtonListeners() {
     const deleteBtn = document.getElementById("deleteBtn");
