@@ -57,8 +57,8 @@ func main() {
 	mainMux := http.NewServeMux()
 
 	// api docs
-	mainMux.Handle("GET /api-docs", http.HandlerFunc(DocsHandler))
-	mainMux.Handle("GET /api-docs/openapi.yaml", http.HandlerFunc(OpenAPISpecHandler))
+	mainMux.Handle("GET /api-docs", http.HandlerFunc(api.DocsHandler))
+	mainMux.Handle("GET /api-docs/openapi.yaml", http.HandlerFunc(api.OpenAPISpecHandler))
 
 	// auth endpoints
 	mainMux.Handle("POST /api/auth/register", http.HandlerFunc(authHandler.RegisterUserHandler))
