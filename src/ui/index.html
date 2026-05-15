@@ -27,6 +27,10 @@
 
             <div class="sidebar-recents">
                 <div class="recents-label">Recents</div>
+                <div class="tag-filter-indicator hidden" id="tagFilterIndicator">
+                    <span>Filtering: <span id="tagFilterName"></span></span>
+                    <button class="tag-filter-clear" id="tagFilterClear">✕</button>
+                </div>
                 <div class="recents-list" id="recentsList">
                     <div class="recents-empty">No uploads yet.</div>
                 </div>
@@ -49,6 +53,18 @@
                 <div class="topbar-actions">
                     <button class="topbar-btn hidden" id="exportBtn">↑ Export</button>
                     <button class="topbar-btn topbar-btn-danger hidden" id="deleteBtn">✕ Delete</button>
+                </div>
+            </div>
+
+            <!-- Notes tags bar (shown when viewing a note) -->
+            <div class="notes-tags-bar hidden" id="notesTagsBar">
+                <div id="notesTagsPills" class="notes-tags-pills"></div>
+                <button class="tag-add-btn hidden" id="tagAddBtn" type="button">+ tag</button>
+                <div class="tag-add-form hidden" id="tagAddForm">
+                    <input type="text" class="tag-add-input" id="tagAddInput" placeholder="tag-name…" maxlength="30" autocomplete="off">
+                    <div class="tag-color-picker" id="tagColorPicker"></div>
+                    <button class="tag-add-submit" id="tagAddSubmit" type="button">Add</button>
+                    <button class="tag-add-cancel" id="tagAddCancel" type="button">✕</button>
                 </div>
             </div>
 

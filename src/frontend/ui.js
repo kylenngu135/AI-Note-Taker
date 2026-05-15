@@ -10,6 +10,9 @@ function showWelcomeView() {
     // hide export and delete buttons when not viewing a document
     document.getElementById("exportBtn").classList.add("hidden");
     document.getElementById("deleteBtn").classList.add("hidden");
+    // hide notes tags bar
+    const notesTagsBar = document.getElementById("notesTagsBar");
+    if (notesTagsBar) notesTagsBar.classList.add("hidden");
 }
 
 document.getElementById("newChatBtn").addEventListener("click", showWelcomeView);

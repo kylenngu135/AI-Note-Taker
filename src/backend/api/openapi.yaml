@@ -4,7 +4,7 @@ info:
   description: >
     REST API for AI Note Taker. Handles user authentication, file uploads
     (PDF, DOCX, TXT, MP4, MP3), transcription, and AI-generated study sheet
-    management via Groq's Llama 3.3 model.
+    management via OpenAI GPT-4o-mini.
   version: 1.0.0
 
 servers:
@@ -321,13 +321,14 @@ paths:
 
 
         **Document files** (PDF, DOCX, TXT) are transcribed entirely in Go.
-        **Audio/video files** (MP4, MP3) are forwarded to the Python Whisper
-        service for transcription.
+        **Audio/video files** (MP4, MP3) are sent to the OpenAI Whisper API
+        for transcription.
 
 
-        After transcription, the extracted text is sent to Groq Llama 3.3
-        to produce an initial study sheet. The transcription, the study sheet,
-        and the initial conversation history are all stored: blobs in
+        Processing is asynchronous. The endpoint enqueues a job and returns
+        immediately with a `job_id` and `upload_id`. A background worker
+        performs transcription, sends the text to OpenAI GPT-4o-mini to
+        produce an initial study sheet, and stores all results: blobs in
         Cloudflare R2; metadata in PostgreSQL.
 
 
@@ -355,12 +356,23 @@ paths:
                     `video/mp4`,
                     `audio/mpeg`.
       responses:
-        "201":
-          description: File uploaded and study sheet generated.
+        "202":
+          description: File accepted. Processing is asynchronous.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuccessMessage"
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    format: uuid
+                    description: ID of the background processing job.
+                    example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  upload_id:
+                    type: string
+                    format: uuid
+                    description: ID of the created upload record.
+                    example: "d290f1ee-6c54-4b01-90e6-d701748f0851"
         "400":
           description: No `file` field in the form, or file exceeds 100 MB.
           content:
@@ -383,8 +395,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: >
-            Transcription failure (document parsing or Whisper service),
-            Groq API failure, R2 storage failure, or database write failure.
+            Transcription failure (document parsing or OpenAI Whisper API),
+            OpenAI API failure, R2 storage failure, or database write failure.
           content:
             text/plain:
               schema:
@@ -581,7 +593,7 @@ paths:
       summary: Send a follow-up prompt and get a new AI response
       description: >
         Appends the user's prompt to the full existing conversation history
-        and calls Groq Llama 3.3 to produce a new response in context.
+        and calls OpenAI GPT-4o-mini to produce a new response in context.
 
 
         Two new rows are written to `note_history`: one `role=user` entry
@@ -637,7 +649,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: >
-            Failed to load conversation history, Groq API error, R2 upload
+            Failed to load conversation history, OpenAI API error, R2 upload
             failure, or database write failure (history insert or note update).
           content:
             text/plain:
