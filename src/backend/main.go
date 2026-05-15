@@ -30,21 +30,21 @@ func main() {
 		os.Getenv("R2_SECRET_ACCESS_KEY"),
 	)
 	if err != nil {
-		log.Println(err)
+		log.Fatal(err)
 	}
 
 	db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		log.Println("failed to open database:", err)
+		log.Fatal("failed to open database:", err)
 	}
 	defer func() { _ = db.Close() }()
 
 	if err = db.Ping(); err != nil {
-		log.Println("failed to connect to database:", err)
+		log.Fatal("failed to connect to database:", err)
 	}
 
 	if err = migrations.RunMigrations(os.Getenv("DATABASE_URL")); err != nil {
-		log.Println(err)
+		log.Fatal(err)
 	}
 
 	log.Println("database connected succesfully")
@@ -81,10 +81,12 @@ func main() {
 	mainMux.Handle("DELETE /api/uploads/{id}/tags/{tagId}", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.RemoveTagFromUploadHandler)))
 
 	// static server for hosting on localhost:8080
-	fs_ui := http.FileServer(http.Dir("../ui"))
-	fs_frontend := http.FileServer(http.Dir("../frontend"))
-	mainMux.Handle("/frontend/", http.StripPrefix("/frontend/", fs_frontend))
-	mainMux.Handle("/", fs_ui)
+	if os.Getenv("APP_ENV") != "production" {
+		fs_ui := http.FileServer(http.Dir("../ui"))
+		fs_frontend := http.FileServer(http.Dir("../frontend"))
+		mainMux.Handle("/frontend/", http.StripPrefix("/frontend/", fs_frontend))
+		mainMux.Handle("/", fs_ui)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
