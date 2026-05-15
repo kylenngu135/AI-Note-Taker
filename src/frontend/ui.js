@@ -1,6 +1,6 @@
 // frontend/ui.js
 
-const API_BASE_URL = "https://ai-note-taker-j35g.onrender.com";
+const API_BASE_URL = window.location.hostname === "localhost" ? "http://localhost:8080" : "https://ai-note-taker-j35g.onrender.com";
 
 // Switch to the welcome/upload view
 function showWelcomeView() {

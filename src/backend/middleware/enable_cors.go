@@ -2,16 +2,26 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strings"
 )
 
-var allowedOrigins = map[string]bool{
-	"https://ai-note-taker-1.onrender.com": true,
-	"http://localhost:8080":                true,
-	"http://localhost:3000":                true,
-}
-
 func EnableCORS(next http.Handler) http.Handler {
+	// Build the allowed origins map once when the middleware is initialized.
+	// ALLOWED_ORIGINS is a comma-separated list; falls back to localhost:8080.
+	raw := os.Getenv("ALLOWED_ORIGINS")
+	if raw == "" {
+		raw = "http://localhost:8080"
+	}
+	allowedOrigins := make(map[string]bool)
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		o = strings.TrimRight(o, "/")
+		if o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := strings.TrimRight(r.Header.Get("Origin"), "/")
 

@@ -20,11 +20,14 @@ func makeToken(secret string, claims jwt.MapClaims) string {
 // --- EnableCORS ---
 
 func TestEnableCORS_SetsHeaders(t *testing.T) {
+	t.Setenv("ALLOWED_ORIGINS", "http://localhost:3000")
+
 	handler := middleware.EnableCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 

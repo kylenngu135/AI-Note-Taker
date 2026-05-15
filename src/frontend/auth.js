@@ -1,4 +1,7 @@
-const AUTH_URL = "https://ai-note-taker-j35g.onrender.com/api/auth"
+const API_BASE_URL = window.location.hostname === "localhost"
+  ? "http://localhost:8080"
+  : "https://ai-note-taker-j35g.onrender.com";
+const AUTH_URL = `${API_BASE_URL}/api/auth`;
 
 function addButtonListeners() {
     document.getElementById("registerButton").addEventListener("click", () => {
@@ -20,7 +23,8 @@ async function register() {
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        credentials: "include"
     })
 
     if (response.status === 201) {
@@ -39,7 +43,8 @@ async function login() {
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        credentials: "include"
     })
 
     if (response.status === 201) {
