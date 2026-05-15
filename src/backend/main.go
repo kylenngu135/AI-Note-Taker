@@ -86,8 +86,13 @@ func main() {
 	mainMux.Handle("/frontend/", http.StripPrefix("/frontend/", fs_frontend))
 	mainMux.Handle("/", fs_ui)
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	// enable cors
-	fmt.Println("Server running on http://localhost:8080")
-	fmt.Println("API docs available at http://localhost:8080/api-docs")
-	log.Fatal(http.ListenAndServe(":8080", middleware.EnableCORS(mainMux)))
+	fmt.Println("Server running on http://localhost:" + port)
+	fmt.Println("API docs available at http://localhost:" + port + "/api-docs")
+	log.Fatal(http.ListenAndServe(":"+port, middleware.EnableCORS(mainMux)))
 }
