@@ -14,6 +14,7 @@ import (
 	"AI-Note-Taker/auth"
 	"AI-Note-Taker/middleware"
 	"AI-Note-Taker/migrations"
+	"AI-Note-Taker/queue"
 	"AI-Note-Taker/storage"
 )
 
@@ -48,10 +49,16 @@ func main() {
 
 	log.Println("database connected succesfully")
 
-	api := &api.Handler{DB: db}
+	queue.StartWorkers(db)
+
+	apiHandler := &api.Handler{DB: db}
 	authHandler := &auth.Handler{DB: db}
 
 	mainMux := http.NewServeMux()
+
+	// api docs
+	mainMux.Handle("GET /api-docs", http.HandlerFunc(api.DocsHandler))
+	mainMux.Handle("GET /api-docs/openapi.yaml", http.HandlerFunc(api.OpenAPISpecHandler))
 
 	// auth endpoints
 	mainMux.Handle("POST /api/auth/register", http.HandlerFunc(authHandler.RegisterUserHandler))
@@ -60,11 +67,18 @@ func main() {
 	mainMux.Handle("GET /api/auth/me", http.HandlerFunc(auth.UserDataHandler))
 
 	// upload endpoints
-	mainMux.Handle("POST /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(api.UploadHandler)))
-	mainMux.Handle("GET /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(api.GetUploadsHandler)))
-	mainMux.Handle("DELETE /api/uploads/{id}", middleware.AuthMiddleware(http.HandlerFunc(api.DeleteUploadHandler)))
-	mainMux.Handle("GET /api/uploads/{id}/notes", middleware.AuthMiddleware(http.HandlerFunc(api.GetNoteByUploadIDHandler)))
-	mainMux.Handle("POST /api/uploads/{id}/notes/regenerate", middleware.AuthMiddleware(http.HandlerFunc(api.RegenerateNoteHandler)))
+	mainMux.Handle("POST /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.UploadHandler)))
+	mainMux.Handle("GET /api/uploads", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.GetUploadsHandler)))
+	mainMux.Handle("DELETE /api/uploads/{id}", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.DeleteUploadHandler)))
+	mainMux.Handle("GET /api/uploads/{id}/notes", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.GetNoteByUploadIDHandler)))
+	mainMux.Handle("POST /api/uploads/{id}/notes/regenerate", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.RegenerateNoteHandler)))
+
+	// tag endpoints
+	mainMux.Handle("GET /api/tags", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.GetTagsHandler)))
+	mainMux.Handle("POST /api/tags", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.CreateTagHandler)))
+	mainMux.Handle("DELETE /api/tags/{id}", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.DeleteTagHandler)))
+	mainMux.Handle("POST /api/uploads/{id}/tags", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.AddTagToUploadHandler)))
+	mainMux.Handle("DELETE /api/uploads/{id}/tags/{tagId}", middleware.AuthMiddleware(http.HandlerFunc(apiHandler.RemoveTagFromUploadHandler)))
 
 	// static server for hosting on localhost:8080
 	fs_ui := http.FileServer(http.Dir("../ui"))
@@ -74,5 +88,6 @@ func main() {
 
 	// enable cors
 	fmt.Println("Server running on http://localhost:8080")
+	fmt.Println("API docs available at http://localhost:8080/api-docs")
 	log.Fatal(http.ListenAndServe(":8080", middleware.EnableCORS(mainMux)))
 }

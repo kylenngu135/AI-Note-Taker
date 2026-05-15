@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type Upload struct {
 	ID            string    `json:"id"`
 	Filename      string    `json:"filename"`

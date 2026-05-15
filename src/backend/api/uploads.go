@@ -12,12 +12,13 @@ import (
 	"os"
 	"strings"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jung-kurt/gofpdf"
 
 	"AI-Note-Taker/notes"
+	"AI-Note-Taker/queue"
 	"AI-Note-Taker/storage"
-	"AI-Note-Taker/transcription"
 )
 
 type Handler struct {
@@ -26,6 +27,50 @@ type Handler struct {
 
 type RegenerateRequest struct {
 	Prompt string `json:"prompt"`
+}
+
+func getUserIDFromContext(r *http.Request) string {
+	raw := r.Context().Value("claims")
+	if raw == nil {
+		return ""
+	}
+	claims, ok := raw.(*jwt.MapClaims)
+	if !ok {
+		return ""
+	}
+	userID, _ := (*claims)["user_id"].(string)
+	return userID
+}
+
+func getFiletypeTagName(fileType string) string {
+	switch fileType {
+	case "application/pdf":
+		return "pdf"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return "docx"
+	case "text/plain", "text/plain; charset=utf-8":
+		return "txt"
+	case "video/mp4":
+		return "video"
+	case "audio/mpeg":
+		return "audio"
+	default:
+		return ""
+	}
+}
+
+func getFiletypeColor(tagName string) string {
+	colors := map[string]string{
+		"pdf":   "#ef4444",
+		"docx":  "#3b82f6",
+		"txt":   "#22c55e",
+		"video": "#f97316",
+		"audio": "#a855f7",
+	}
+	if c, ok := colors[tagName]; ok {
+		return c
+	}
+	return "#6b7fa3"
 }
 
 func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +99,7 @@ func (h *Handler) DeleteUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete from DB (cascades to notes and note_history)
+	// Delete from DB (cascades to notes, note_tags, and note_history)
 	err = deleteUpload(h.DB, id)
 	if err != nil {
 		http.Error(w, "failed to delete content", http.StatusInternalServerError)
@@ -78,10 +123,15 @@ func (h *Handler) GetUploadsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploads, err := getAllUploadIDs(h.DB)
+	tagFilter := r.URL.Query().Get("tag")
+	uploads, err := getAllUploadIDsWithTags(h.DB, tagFilter)
 	if err != nil {
 		http.Error(w, "failed to upload", http.StatusInternalServerError)
 		return
+	}
+
+	if uploads == nil {
+		uploads = []UploadListItem{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -100,7 +150,7 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 	id := r.PathValue("id")
 	format := r.URL.Query().Get("format")
 
-	note, err := getNoteByUploadID(h.DB, id)
+	noteWithHistory, err := GetNoteWithHistoryByUploadID(h.DB, id)
 	if err != nil {
 		http.Error(w, "failed to receive note", http.StatusInternalServerError)
 		return
@@ -108,37 +158,86 @@ func (h *Handler) GetNoteByUploadIDHandler(w http.ResponseWriter, r *http.Reques
 
 	switch format {
 	case "txt":
+		content := buildExportContent(noteWithHistory.History, noteWithHistory.Note.Content)
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.txt"`, id))
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(note.Content))
+		w.Write([]byte(content))
 	case "pdf":
+		content := buildExportContent(noteWithHistory.History, noteWithHistory.Note.Content)
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.pdf"`, id))
 		w.WriteHeader(http.StatusOK)
-		if err := generatePDF(w, note.Content); err != nil {
+		if err := generatePDF(w, content); err != nil {
 			http.Error(w, "failed to generate PDF", http.StatusInternalServerError)
 			return
 		}
 	case "docx":
+		content := buildExportContent(noteWithHistory.History, noteWithHistory.Note.Content)
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notes-%s.docx"`, id))
 		w.WriteHeader(http.StatusOK)
-		if err := generateDOCX(w, note.Content); err != nil {
+		if err := generateDOCX(w, content); err != nil {
 			http.Error(w, "failed to generate DOCX", http.StatusInternalServerError)
 			return
 		}
 	default:
-		// Return note with history
-		noteWithHistory, err := GetNoteWithHistoryByUploadID(h.DB, id)
-		if err != nil {
-			http.Error(w, "failed to get note history", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(noteWithHistory)
 	}
+}
+
+// buildExportContent formats the full conversation history into a readable export document.
+// The first user entry (raw uploaded transcription) is skipped. Each AI response is
+// labelled with the prompt that produced it. fallback is used when history is empty.
+//
+// Handles two history formats:
+//   - New format (role-split): user rows hold only the prompt; assistant rows hold only the content.
+//   - Old format (single-row): a "user" row may hold both the prompt and the AI response in content
+//     (written before the role column was added). Content from such rows is emitted as a response.
+func buildExportContent(history []NoteHistory, fallback string) string {
+	const divider = "------------------------------------------------------------"
+
+	var sb strings.Builder
+	firstAssistant := true
+
+	writeAssistantContent := func(content string) {
+		if firstAssistant {
+			sb.WriteString("Study Sheet\n")
+			sb.WriteString("============================================================\n\n")
+			firstAssistant = false
+		}
+		sb.WriteString(content)
+		sb.WriteString("\n")
+	}
+
+	for i, entry := range history {
+		// The first user entry is the raw uploaded document text — skip it.
+		// Exception: old-format rows stored the first follow-up response in content;
+		// if content is non-empty the row is a real Q&A pair, not the transcription.
+		if i == 0 && entry.Role == "user" && entry.Content == "" {
+			continue
+		}
+
+		if entry.Role == "user" && entry.Prompt != "" {
+			sb.WriteString("\n" + divider + "\n")
+			sb.WriteString("Follow-up: " + entry.Prompt + "\n")
+			sb.WriteString(divider + "\n\n")
+			// Old format: AI response stored in the same row as the user prompt.
+			if entry.Content != "" {
+				writeAssistantContent(entry.Content)
+			}
+		} else if entry.Role == "assistant" && entry.Content != "" {
+			writeAssistantContent(entry.Content)
+		}
+	}
+
+	result := strings.TrimSpace(sb.String())
+	if result == "" {
+		return fallback
+	}
+	return result
 }
 
 func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) {
@@ -163,8 +262,42 @@ func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Regenerate study sheet with existing notes as context
-	newContent, err := notes.RegenerateStudySheet(note.Content, reqBody.Prompt)
+	// Get conversation history
+	history, err := GetNoteHistoryByUploadID(h.DB, id)
+	if err != nil {
+		http.Error(w, "failed to get note history", http.StatusInternalServerError)
+		return
+	}
+
+	// Build conversation history from database
+	var conversationHistory []notes.Message
+	for _, h := range history {
+		// Add user message (prompt)
+		if h.Prompt != "" {
+			conversationHistory = append(conversationHistory, notes.Message{
+				Role:    "user",
+				Content: h.Prompt,
+			})
+		}
+		// Add assistant response (content)
+		if h.Content != "" {
+			conversationHistory = append(conversationHistory, notes.Message{
+				Role:    "assistant",
+				Content: h.Content,
+			})
+		}
+	}
+
+	// If no history exists, start with the original transcription
+	if len(conversationHistory) == 0 {
+		conversationHistory = append(conversationHistory, notes.Message{
+			Role:    "user",
+			Content: note.Content,
+		})
+	}
+
+	// Regenerate study sheet with full conversation history
+	newContent, err := notes.RegenerateStudySheetWithHistory(conversationHistory, reqBody.Prompt)
 	if err != nil {
 		http.Error(w, "failed to regenerate study sheet", http.StatusInternalServerError)
 		return
@@ -177,9 +310,17 @@ func (h *Handler) RegenerateNoteHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Insert into note_history
+	// Insert into note_history - store user prompt
 	historyID := uuid.New().String()
-	_, err = InsertNoteHistory(h.DB, historyID, note.ID, id, reqBody.Prompt, newContent, newStorageKey)
+	_, err = InsertNoteHistory(h.DB, historyID, note.ID, id, "user", reqBody.Prompt, "", "")
+	if err != nil {
+		http.Error(w, "failed to store note history", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert assistant response into note_history
+	historyID = uuid.New().String()
+	_, err = InsertNoteHistory(h.DB, historyID, note.ID, id, "assistant", "", newContent, newStorageKey)
 	if err != nil {
 		http.Error(w, "failed to store note history", http.StatusInternalServerError)
 		return
@@ -207,40 +348,71 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no file provided", http.StatusBadRequest)
 		return
 	}
+	defer file.Close()
 
 	fileType, err := getFileType(file, header)
 	if err != nil {
-		log.Println("Invalid file type: ", err.Error())
+		log.Println("Invalid file type:", err.Error())
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return
 	}
 
-	var text string
-	if isDocument(fileType) {
-		text, err = transcription.ExtractText(file, fileType)
-	} else {
-		text, err = transcription.TranscribeAudio(file, header.Filename)
-	}
+	// Read the entire file into memory so we can upload it to R2 for async processing.
+	rawBytes, err := io.ReadAll(file)
 	if err != nil {
-		log.Println("Failed to extract text: ", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Println("Failed to read file:", err.Error())
+		http.Error(w, "failed to read file", http.StatusInternalServerError)
 		return
 	}
 
-	studySheet, err := notes.GenerateStudySheet(text)
+	uploadID := uuid.New().String()
+	jobID := uuid.New().String()
+
+	// Store the raw file in R2 so the worker can retrieve it.
+	rawKey, err := storage.UploadRawFile(r.Context(), uploadID, rawBytes, fileType, os.Getenv("R2_BUCKET_NAME"))
 	if err != nil {
-		log.Println("Failed to generate studysheet: ", err.Error())
-		http.Error(w, "failed to generate study sheet", http.StatusInternalServerError)
+		log.Println("Failed to upload raw file:", err.Error())
+		http.Error(w, "failed to store file", http.StatusInternalServerError)
 		return
 	}
 
-	err = uploadToDB(h, w, r, text, header, studySheet)
-	if err != nil {
-		log.Println("Failed to upload to database: ", err.Error())
+	// Create the upload row immediately with status "pending".
+	if _, err = insertUploadPending(h.DB, uploadID, header.Filename, fileType, header.Size, rawKey); err != nil {
+		log.Println("Failed to insert upload:", err.Error())
+		http.Error(w, "failed to save upload", http.StatusInternalServerError)
 		return
 	}
 
-	writeSuccessResp(w)
+	// Record the job in Postgres so its status can be tracked.
+	if err = queue.InsertJobRecord(h.DB, jobID, rawKey); err != nil {
+		log.Println("Failed to insert job:", err.Error())
+		http.Error(w, "failed to create job", http.StatusInternalServerError)
+		return
+	}
+
+	// Push the job onto the correct Redis queue.
+	job := queue.Job{
+		JobID:    jobID,
+		UploadID: uploadID,
+		FileType: fileType,
+		FileKey:  rawKey,
+		Filename: header.Filename,
+		FileSize: header.Size,
+		UserID:   getUserIDFromContext(r),
+	}
+
+	if err = queue.EnqueueJob(job); err != nil {
+		log.Println("Failed to enqueue job:", err.Error())
+		http.Error(w, "failed to enqueue job", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{
+		"job_id":    jobID,
+		"upload_id": uploadID,
+	})
 }
 
 func getFileType(file multipart.File, header *multipart.FileHeader) (string, error) {
@@ -360,7 +532,7 @@ func writeSuccessResp(w http.ResponseWriter) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "upload successful"})
 }
 
-func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string, header *multipart.FileHeader, studysheet string) error {
+func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string, header *multipart.FileHeader, studysheet string, autoTags []string) error {
 	uploadID := uuid.New().String()
 	noteID := uuid.New().String()
 
@@ -392,6 +564,51 @@ func uploadToDB(h *Handler, w http.ResponseWriter, r *http.Request, text string,
 		return err
 	}
 	log.Println("note inserted into DB:", noteID)
+
+	// Store initial conversation in note_history: user's upload (transcription) -> AI response (study sheet)
+	historyID := uuid.New().String()
+	_, err = InsertNoteHistory(h.DB, historyID, noteID, uploadID, "user", text, "", storageKey)
+	if err != nil {
+		http.Error(w, "failed to store initial conversation", http.StatusInternalServerError)
+		return err
+	}
+
+	historyID = uuid.New().String()
+	_, err = InsertNoteHistory(h.DB, historyID, noteID, uploadID, "assistant", "", studysheet, studySheetKey)
+	if err != nil {
+		http.Error(w, "failed to store initial conversation", http.StatusInternalServerError)
+		return err
+	}
+
+	// Best-effort: create and associate tags (errors are logged but don't fail the upload)
+	userID := getUserIDFromContext(r)
+	if userID != "" {
+		// Auto tags from AI
+		for _, tagName := range autoTags {
+			tagID := uuid.New().String()
+			tag, err := createOrGetTag(h.DB, tagID, userID, tagName, "auto", "#6b7fa3")
+			if err != nil {
+				log.Printf("failed to create auto tag %q: %v", tagName, err)
+				continue
+			}
+			if err := addTagToNote(h.DB, noteID, tag.ID); err != nil {
+				log.Printf("failed to associate auto tag %q: %v", tagName, err)
+			}
+		}
+
+		// Filetype tag
+		filetypeTag := getFiletypeTagName(fileType)
+		if filetypeTag != "" {
+			tagID := uuid.New().String()
+			color := getFiletypeColor(filetypeTag)
+			tag, err := createOrGetTag(h.DB, tagID, userID, filetypeTag, "filetype", color)
+			if err != nil {
+				log.Printf("failed to create filetype tag %q: %v", filetypeTag, err)
+			} else if err := addTagToNote(h.DB, noteID, tag.ID); err != nil {
+				log.Printf("failed to associate filetype tag %q: %v", filetypeTag, err)
+			}
+		}
+	}
 
 	return nil
 }

@@ -7,7 +7,10 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
 )
+
+var OpenAIBaseURL = "https://api.openai.com"
 
 func TranscribeAudio(file multipart.File, filename string) (string, error) {
 	body := &bytes.Buffer{}
@@ -21,13 +24,21 @@ func TranscribeAudio(file multipart.File, filename string) (string, error) {
 	if _, err := io.Copy(part, file); err != nil {
 		return "", fmt.Errorf("failed to copy file: %w", err)
 	}
+
+	if err := writer.WriteField("model", "whisper-1"); err != nil {
+		return "", fmt.Errorf("failed to write model field: %w", err)
+	}
+
 	writer.Close()
 
-	resp, err := http.Post(
-		"http://localhost:8081/transcribe",
-		writer.FormDataContentType(),
-		body,
-	)
+	req, err := http.NewRequest(http.MethodPost, OpenAIBaseURL+"/v1/audio/transcriptions", body)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call whisper service: %w", err)
 	}

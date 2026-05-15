@@ -27,7 +27,7 @@ func extractTXTText(file multipart.File) (string, error) {
 	bytes, err := io.ReadAll(file)
 
 	if err != nil {
-		log.Printf(err.Error())
+		log.Println(err.Error())
 		return "", err
 	}
 

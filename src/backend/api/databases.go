@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -27,24 +28,36 @@ type Note struct {
 }
 
 type NoteHistory struct {
+	ID         string    `json:"id"`
+	NoteID     string    `json:"note_id"`
+	UploadID   string    `json:"upload_id"`
+	Role       string    `json:"role"`
+	Prompt     string    `json:"prompt"`
+	Content    string    `json:"content"`
+	StorageKey string    `json:"-"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type Tag struct {
 	ID        string    `json:"id"`
-	NoteID    string    `json:"note_id"`
-	UploadID  string    `json:"upload_id"`
-	Prompt    string    `json:"prompt"`
-	Content   string    `json:"content"`
-	StorageKey string   `json:"-"`
+	UserID    string    `json:"user_id,omitempty"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Color     string    `json:"color"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 type NoteWithHistory struct {
-	Note    Note         `json:"note"`
+	Note    Note          `json:"note"`
 	History []NoteHistory `json:"history"`
+	Tags    []Tag         `json:"tags"`
 }
 
 type UploadListItem struct {
 	ID        string    `json:"id"`
 	Filename  string    `json:"filename"`
 	CreatedAt time.Time `json:"created_at"`
+	Tags      []Tag     `json:"tags"`
 }
 
 func insertUpload(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey string) (Upload, error) {
@@ -68,6 +81,29 @@ func insertUpload(database *sql.DB, uploadID, filename, fileType string, fileSiz
 		return Upload{}, fmt.Errorf("failed to insert upload: %w", err)
 	}
 
+	return upload, nil
+}
+
+// insertUploadPending creates an upload row with status "pending" before async processing begins.
+func insertUploadPending(database *sql.DB, uploadID, filename, fileType string, fileSize int64, storageKey string) (Upload, error) {
+	query := `
+        INSERT INTO uploads (id, filename, file_type, file_size, storage_key, status)
+        VALUES ($1, $2, $3, $4, $5, 'pending')
+        RETURNING id, filename, file_type, file_size, storage_key, status, created_at
+    `
+	var upload Upload
+	err := database.QueryRow(query, uploadID, filename, fileType, fileSize, storageKey).Scan(
+		&upload.ID,
+		&upload.Filename,
+		&upload.FileType,
+		&upload.FileSize,
+		&upload.StorageKey,
+		&upload.Status,
+		&upload.CreatedAt,
+	)
+	if err != nil {
+		return Upload{}, fmt.Errorf("failed to insert upload: %w", err)
+	}
 	return upload, nil
 }
 
@@ -101,37 +137,76 @@ func getAllUploads(database *sql.DB) (uploads []Upload, err error) {
 	return
 }
 
-func getAllUploadIDs(database *sql.DB) (uploads []UploadListItem, err error) {
-	query := `
-		SELECT id, filename, created_at 
-		FROM uploads
-		ORDER BY last_updated_at DESC;
+func getAllUploadIDsWithTags(database *sql.DB, tagFilter string) ([]UploadListItem, error) {
+	baseCols := `
+		SELECT
+			u.id, u.filename, u.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object('id', t.id, 'name', t.name, 'type', t.type, 'color', COALESCE(t.color, ''))
+				) FILTER (WHERE t.id IS NOT NULL),
+				'[]'::json
+			) AS tags
+		FROM uploads u
+		LEFT JOIN notes n ON n.upload_id = u.id
+		LEFT JOIN note_tags nt ON nt.note_id = n.id
+		LEFT JOIN tags t ON t.id = nt.tag_id
 	`
 
-	rows, err := database.Query(query)
+	var (
+		query string
+		args  []interface{}
+	)
+
+	if tagFilter != "" {
+		query = baseCols + `
+		WHERE u.id IN (
+			SELECT DISTINCT u2.id FROM uploads u2
+			JOIN notes n2 ON n2.upload_id = u2.id
+			JOIN note_tags nt2 ON nt2.note_id = n2.id
+			JOIN tags t2 ON t2.id = nt2.tag_id
+			WHERE LOWER(t2.name) = LOWER($1)
+		)
+		GROUP BY u.id, u.filename, u.created_at, u.last_updated_at
+		ORDER BY u.last_updated_at DESC
+		`
+		args = []interface{}{tagFilter}
+	} else {
+		query = baseCols + `
+		GROUP BY u.id, u.filename, u.created_at, u.last_updated_at
+		ORDER BY u.last_updated_at DESC
+		`
+	}
+
+	rows, err := database.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uploads: %w", err)
 	}
 	defer rows.Close()
 
+	var uploads []UploadListItem
 	for rows.Next() {
 		var upload UploadListItem
-		err := rows.Scan(
-			&upload.ID,
-			&upload.Filename,
-			&upload.CreatedAt,
-		)
-		if err != nil {
+		var tagsJSON []byte
+		if err := rows.Scan(&upload.ID, &upload.Filename, &upload.CreatedAt, &tagsJSON); err != nil {
 			return nil, fmt.Errorf("failed to scan upload: %w", err)
+		}
+		if len(tagsJSON) > 0 {
+			if jsonErr := json.Unmarshal(tagsJSON, &upload.Tags); jsonErr != nil {
+				upload.Tags = []Tag{}
+			}
+		}
+		if upload.Tags == nil {
+			upload.Tags = []Tag{}
 		}
 		uploads = append(uploads, upload)
 	}
 
-	return
+	return uploads, nil
 }
 
 func deleteUpload(database *sql.DB, id string) error {
-	// Delete in order: note_history → notes → uploads (respecting FKs)
+	// Delete in order: note_history → notes (cascades note_tags) → uploads (respecting FKs)
 	if err := deleteNoteHistoryByUploadID(database, id); err != nil {
 		return fmt.Errorf("failed to delete note history: %w", err)
 	}
@@ -245,18 +320,19 @@ func UpdateNote(database *sql.DB, noteID, content, storageKey string) (Note, err
 	return note, nil
 }
 
-func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, content, storageKey string) (NoteHistory, error) {
+func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, role, prompt, content, storageKey string) (NoteHistory, error) {
 	query := `
-		INSERT INTO note_history (id, note_id, upload_id, prompt, content, storage_key)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, note_id, upload_id, prompt, content, storage_key, created_at
+		INSERT INTO note_history (id, note_id, upload_id, role, prompt, content, storage_key)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, note_id, upload_id, role, prompt, content, storage_key, created_at
 	`
 
 	var history NoteHistory
-	err := database.QueryRow(query, historyID, noteID, uploadID, prompt, content, storageKey).Scan(
+	err := database.QueryRow(query, historyID, noteID, uploadID, role, prompt, content, storageKey).Scan(
 		&history.ID,
 		&history.NoteID,
 		&history.UploadID,
+		&history.Role,
 		&history.Prompt,
 		&history.Content,
 		&history.StorageKey,
@@ -271,7 +347,7 @@ func InsertNoteHistory(database *sql.DB, historyID, noteID, uploadID, prompt, co
 
 func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory, error) {
 	query := `
-		SELECT id, note_id, upload_id, prompt, content, storage_key, created_at
+		SELECT id, note_id, upload_id, role, prompt, content, storage_key, created_at
 		FROM note_history
 		WHERE upload_id = $1
 		ORDER BY created_at ASC
@@ -290,6 +366,7 @@ func GetNoteHistoryByUploadID(database *sql.DB, uploadID string) ([]NoteHistory,
 			&h.ID,
 			&h.NoteID,
 			&h.UploadID,
+			&h.Role,
 			&h.Prompt,
 			&h.Content,
 			&h.StorageKey,
@@ -315,11 +392,130 @@ func GetNoteWithHistoryByUploadID(database *sql.DB, uploadID string) (NoteWithHi
 		return NoteWithHistory{}, err
 	}
 
+	// best-effort: tags are non-critical
+	tags, _ := getTagsByNoteID(database, note.ID)
+	if tags == nil {
+		tags = []Tag{}
+	}
+
 	return NoteWithHistory{
 		Note:    note,
 		History: history,
+		Tags:    tags,
 	}, nil
 }
+
+// --- Tag DB functions ---
+
+func createOrGetTag(database *sql.DB, id, userID, name, tagType, color string) (Tag, error) {
+	query := `
+		INSERT INTO tags (id, user_id, name, type, color)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_id, name) DO UPDATE SET name = EXCLUDED.name
+		RETURNING id, user_id, name, type, COALESCE(color, ''), created_at
+	`
+	var tag Tag
+	err := database.QueryRow(query, id, userID, name, tagType, color).Scan(
+		&tag.ID, &tag.UserID, &tag.Name, &tag.Type, &tag.Color, &tag.CreatedAt,
+	)
+	if err != nil {
+		return Tag{}, fmt.Errorf("failed to create/get tag: %w", err)
+	}
+	return tag, nil
+}
+
+func addTagToNote(database *sql.DB, noteID, tagID string) error {
+	query := `INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+	_, err := database.Exec(query, noteID, tagID)
+	return err
+}
+
+func removeTagFromNote(database *sql.DB, noteID, tagID string) error {
+	query := `DELETE FROM note_tags WHERE note_id = $1 AND tag_id = $2`
+	_, err := database.Exec(query, noteID, tagID)
+	return err
+}
+
+func getTagsByNoteID(database *sql.DB, noteID string) ([]Tag, error) {
+	query := `
+		SELECT t.id, t.user_id, t.name, t.type, COALESCE(t.color, ''), t.created_at
+		FROM tags t
+		JOIN note_tags nt ON nt.tag_id = t.id
+		WHERE nt.note_id = $1
+		ORDER BY t.type, t.name
+	`
+	rows, err := database.Query(query, noteID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []Tag
+	for rows.Next() {
+		var tag Tag
+		if err := rows.Scan(&tag.ID, &tag.UserID, &tag.Name, &tag.Type, &tag.Color, &tag.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+
+	return tags, nil
+}
+
+func getAllTagsForUser(database *sql.DB, userID string) ([]Tag, error) {
+	query := `
+		SELECT id, user_id, name, type, COALESCE(color, ''), created_at
+		FROM tags
+		WHERE user_id = $1
+		ORDER BY name ASC
+	`
+	rows, err := database.Query(query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []Tag
+	for rows.Next() {
+		var tag Tag
+		if err := rows.Scan(&tag.ID, &tag.UserID, &tag.Name, &tag.Type, &tag.Color, &tag.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+
+	return tags, nil
+}
+
+func deleteTagForUser(database *sql.DB, tagID, userID string) error {
+	query := `DELETE FROM tags WHERE id = $1 AND user_id = $2`
+	result, err := database.Exec(query, tagID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete tag: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("tag not found")
+	}
+	return nil
+}
+
+func getTagByID(database *sql.DB, tagID string) (Tag, error) {
+	query := `SELECT id, user_id, name, type, COALESCE(color, ''), created_at FROM tags WHERE id = $1`
+	var tag Tag
+	err := database.QueryRow(query, tagID).Scan(
+		&tag.ID, &tag.UserID, &tag.Name, &tag.Type, &tag.Color, &tag.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return Tag{}, fmt.Errorf("tag not found")
+	}
+	if err != nil {
+		return Tag{}, fmt.Errorf("failed to get tag: %w", err)
+	}
+	return tag, nil
+}
+
+// --- User DB functions ---
 
 func CheckUserExists(database *sql.DB, email string) (bool, error) {
 	query := ` SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`

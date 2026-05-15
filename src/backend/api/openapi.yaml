@@ -1,0 +1,653 @@
+openapi: 3.1.0
+info:
+  title: AI Note Taker API
+  description: >
+    REST API for AI Note Taker. Handles user authentication, file uploads
+    (PDF, DOCX, TXT, MP4, MP3), transcription, and AI-generated study sheet
+    management via Groq's Llama 3.3 model.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: JWT (HS256) issued on login/register, valid for 24 hours.
+
+  schemas:
+    UserCredentials:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: "s3cur3P@ssw0rd"
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Signed JWT. Also set as the `auth_token` HttpOnly cookie.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    MeResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        email:
+          type: string
+          format: email
+          example: user@example.com
+
+    UploadListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "d290f1ee-6c54-4b01-90e6-d701748f0851"
+        filename:
+          type: string
+          example: "lecture-notes.pdf"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-04-28T14:30:00Z"
+
+    Note:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "b3f1a2c4-7890-4def-abcd-123456789012"
+        upload_id:
+          type: string
+          format: uuid
+          example: "d290f1ee-6c54-4b01-90e6-d701748f0851"
+        content:
+          type: string
+          description: >
+            Markdown text of the most recent AI-generated response. This field
+            is overwritten on every follow-up call to
+            `POST /api/uploads/{id}/notes/regenerate`; the full history of all
+            responses is preserved in `note_history`.
+        created_at:
+          type: string
+          format: date-time
+        last_updated_at:
+          type: string
+          format: date-time
+          description: Updated whenever a follow-up regeneration is saved.
+
+    NoteHistory:
+      type: object
+      description: >
+        A single turn in the conversation. Turns alternate between `user`
+        (prompt) and `assistant` (AI response). The very first `user` entry
+        contains the raw uploaded document text in `prompt`; all subsequent
+        `user` entries contain follow-up questions.
+      properties:
+        id:
+          type: string
+          format: uuid
+        note_id:
+          type: string
+          format: uuid
+        upload_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+          description: >
+            `user` — the `prompt` field holds the input text (`content` is
+            empty). `assistant` — the `content` field holds the AI response
+            (`prompt` is empty).
+        prompt:
+          type: string
+          description: >
+            User input text. Non-empty only on `role=user` entries. The first
+            user entry contains the raw document transcription; later entries
+            contain follow-up questions.
+          example: "Summarise the key equations as bullet points."
+        content:
+          type: string
+          description: >
+            AI-generated markdown text. Non-empty only on `role=assistant`
+            entries.
+        created_at:
+          type: string
+          format: date-time
+
+    NoteWithHistory:
+      type: object
+      properties:
+        note:
+          $ref: "#/components/schemas/Note"
+          description: Current (most-recent) state of the study sheet.
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/NoteHistory"
+          description: >
+            Full conversation in chronological order. For a fresh upload the
+            first two entries are always the raw transcription (`role=user`)
+            and the initial study sheet (`role=assistant`). Each subsequent
+            follow-up appends one `user` entry (the question) and one
+            `assistant` entry (the response).
+
+    RegenerateRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          description: Follow-up instruction or question for the AI.
+          example: "Summarise the key equations into a bullet list."
+
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "upload successful"
+
+    ErrorResponse:
+      type: string
+      description: Plain-text error message.
+
+paths:
+  # ──────────────────────────────────────────
+  # Auth
+  # ──────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      description: >
+        Creates a new account, hashes the password with bcrypt (cost 12),
+        issues a 24-hour JWT (HS256), and sets an `auth_token` HttpOnly
+        cookie. Returns `409` if the email is already registered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCredentials"
+      responses:
+        "201":
+          description: Account created. JWT returned in body and cookie.
+          headers:
+            Set-Cookie:
+              description: >
+                `auth_token=<jwt>; HttpOnly; Secure; SameSite=Strict;
+                Path=/; Max-Age=86400`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Email address is not valid.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email is already registered.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Password hashing, database insert, or JWT signing failure.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email and password
+      description: >
+        Verifies the supplied credentials against the stored bcrypt hash.
+        On success, issues a fresh 24-hour JWT and sets an `auth_token`
+        HttpOnly cookie. Returns `400` for both an unknown email and a wrong
+        password (no distinguishing detail is leaked).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCredentials"
+      responses:
+        "201":
+          description: Login successful. JWT returned in body and cookie.
+          headers:
+            Set-Cookie:
+              description: >
+                `auth_token=<jwt>; HttpOnly; Secure; SameSite=Strict;
+                Path=/; Max-Age=86400`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: >
+            Invalid email format, unknown email address, or incorrect
+            password.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database query or JWT signing failure.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out the current user
+      description: >
+        Expires the `auth_token` cookie by setting `Max-Age=-1`. No request
+        body or `Authorization` header is required; the endpoint is always
+        accessible regardless of authentication state.
+      responses:
+        "200":
+          description: Cookie cleared. No response body.
+          headers:
+            Set-Cookie:
+              description: >
+                `auth_token=; HttpOnly; Secure; SameSite=Strict; Path=/;
+                Max-Age=-1` (instructs the browser to delete the cookie)
+              schema:
+                type: string
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the currently authenticated user
+      description: >
+        Reads and validates the `auth_token` cookie, then returns the
+        user's ID and email extracted from the JWT claims. Does not hit the
+        database.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: JWT is valid; returns user identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Cookie is absent or JWT is invalid/expired.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ──────────────────────────────────────────
+  # Uploads
+  # ──────────────────────────────────────────
+  /api/uploads:
+    post:
+      tags: [Uploads]
+      summary: Upload a file and generate a study sheet
+      description: >
+        Accepts a single file (max 100 MB) via `multipart/form-data`.
+
+
+        **Document files** (PDF, DOCX, TXT) are transcribed entirely in Go.
+        **Audio/video files** (MP4, MP3) are forwarded to the Python Whisper
+        service for transcription.
+
+
+        After transcription, the extracted text is sent to Groq Llama 3.3
+        to produce an initial study sheet. The transcription, the study sheet,
+        and the initial conversation history are all stored: blobs in
+        Cloudflare R2; metadata in PostgreSQL.
+
+
+        The declared `Content-Type` of the uploaded part must match the
+        detected file signature. Mismatches are rejected with `415`.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >
+                    The file to process. Accepted MIME types:
+                    `application/pdf`,
+                    `application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
+                    `text/plain`,
+                    `text/plain; charset=utf-8`,
+                    `video/mp4`,
+                    `audio/mpeg`.
+      responses:
+        "201":
+          description: File uploaded and study sheet generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+        "400":
+          description: No `file` field in the form, or file exceeds 100 MB.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid `auth_token` cookie.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: >
+            Unsupported MIME type, or detected file signature does not match
+            the declared `Content-Type`.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            Transcription failure (document parsing or Whisper service),
+            Groq API failure, R2 storage failure, or database write failure.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      tags: [Uploads]
+      summary: List all uploads for the authenticated user
+      description: >
+        Returns a summary list of all uploads ordered by `last_updated_at`
+        descending (most-recently-modified first). Each item contains only
+        `id`, `filename`, and `created_at`.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: >
+            Array of upload summaries. Returns an empty array when the user
+            has no uploads.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UploadListItem"
+        "401":
+          description: Missing or invalid `auth_token` cookie.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database query failure.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/uploads/{id}:
+    delete:
+      tags: [Uploads]
+      summary: Delete an upload and all associated data
+      description: >
+        Deletes the upload record, its note, and the full note history from
+        PostgreSQL (in dependency order: `note_history` → `notes` →
+        `uploads`). Also attempts to delete the corresponding transcription
+        and study-sheet objects from Cloudflare R2; R2 errors are silently
+        ignored — the database deletion is authoritative.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Upload ID.
+      responses:
+        "204":
+          description: Upload and all related data deleted. No response body.
+        "401":
+          description: Missing or invalid `auth_token` cookie.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Upload or its associated note was not found.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to retrieve note history or delete from database.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ──────────────────────────────────────────
+  # Notes
+  # ──────────────────────────────────────────
+  /api/uploads/{id}/notes:
+    get:
+      tags: [Notes]
+      summary: Get notes and conversation history, or export as a file
+      description: >
+        **Without `format`** — returns the current study sheet and the full
+        conversation history as JSON (`NoteWithHistory`).
+
+
+        **With `format=txt | pdf | docx`** — returns the complete conversation
+        as a downloadable file. The exported document is built from the full
+        `note_history` and contains:
+
+        1. An initial **Study Sheet** section (the first AI response).
+
+        2. For each follow-up: a labelled **Follow-up** section with the
+           user's question and the AI's response immediately below it.
+
+
+        The `Content-Disposition` response header is set to
+        `attachment; filename="notes-{id}.{format}"`.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Upload ID.
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [txt, pdf, docx]
+          description: >
+            When present, returns the full conversation history as a
+            downloadable file in the requested format instead of JSON.
+            Omit for the JSON response.
+      responses:
+        "200":
+          description: >
+            **No `format`**: JSON object containing the note and full history.
+
+            **`format=txt`**: Plain-text file with human-readable section
+            headers (`Study Sheet`, `Follow-up: …`).
+
+            **`format=pdf`**: A4 PDF generated server-side.
+
+            **`format=docx`**: Word-compatible DOCX (ZIP-packaged OOXML).
+          headers:
+            Content-Disposition:
+              description: >
+                Present only when a `format` query parameter is supplied.
+                Value: `attachment; filename="notes-{id}.{format}"`
+              schema:
+                type: string
+                example: 'attachment; filename="notes-d290f1ee.txt"'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoteWithHistory"
+            text/plain:
+              schema:
+                type: string
+                description: >
+                  Formatted plain-text document. Structure:
+
+                  ```
+                  Study Sheet
+                  ============================================================
+
+                  {initial AI response}
+
+                  ------------------------------------------------------------
+                  Follow-up: {question}
+                  ------------------------------------------------------------
+
+                  {AI response}
+                  ```
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                description: A4 PDF containing the full conversation history.
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+                description: DOCX file containing the full conversation history.
+        "401":
+          description: Missing or invalid `auth_token` cookie.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            Database query failure, or file generation failure (PDF/DOCX
+            rendering error).
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/uploads/{id}/notes/regenerate:
+    post:
+      tags: [Notes]
+      summary: Send a follow-up prompt and get a new AI response
+      description: >
+        Appends the user's prompt to the full existing conversation history
+        and calls Groq Llama 3.3 to produce a new response in context.
+
+
+        Two new rows are written to `note_history`: one `role=user` entry
+        for the prompt (no R2 object) and one `role=assistant` entry for
+        the AI response (stored in R2). The `notes` table is also updated
+        to reflect the latest content and storage key.
+
+
+        The returned object is the updated `Note`, not the full history.
+        Use `GET /api/uploads/{id}/notes` to retrieve the complete
+        conversation.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Upload ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateRequest"
+      responses:
+        "200":
+          description: >
+            The `notes` record updated with the new AI-generated content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "400":
+          description: Request body is absent or not valid JSON.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid `auth_token` cookie.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No note found for the given upload ID.
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: >
+            Failed to load conversation history, Groq API error, R2 upload
+            failure, or database write failure (history insert or note update).
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+tags:
+  - name: Auth
+    description: User registration, login, logout, and identity.
+  - name: Uploads
+    description: File upload and upload management.
+  - name: Notes
+    description: Study sheet retrieval, export, and AI follow-up conversations.

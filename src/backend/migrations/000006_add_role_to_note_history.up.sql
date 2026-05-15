@@ -1,0 +1,1 @@
+ALTER TABLE note_history ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
