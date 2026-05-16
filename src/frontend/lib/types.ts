@@ -1,10 +1,8 @@
 export interface Tag {
   id: string;
-  user_id?: string;
   name: string;
   type: string;
   color: string;
-  created_at: string;
 }
 
 export interface UploadListItem {
@@ -26,7 +24,7 @@ export interface NoteHistory {
   id: string;
   note_id: string;
   upload_id: string;
-  role: string;
+  role: 'user' | 'assistant';
   prompt: string;
   content: string;
   created_at: string;
@@ -38,9 +36,13 @@ export interface NoteWithHistory {
   tags: Tag[];
 }
 
-export interface User {
+export interface MeResponse {
   user_id: string;
   email: string;
+}
+
+export interface AuthResponse {
+  token: string;
 }
 
 export interface UploadResponse {
@@ -48,14 +50,14 @@ export interface UploadResponse {
   upload_id: string;
 }
 
-export interface AuthResponse {
-  token: string;
+export type ExportFormat = 'txt' | 'pdf' | 'docx';
+
+export type ToastType = 'success' | 'error' | 'info';
+
+export interface ToastItem {
+  id: string;
+  message: string;
+  type: ToastType;
 }
 
-export interface MessageBubbleItem {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  label?: string;
-  isLoading?: boolean;
-}
+export type FileCategory = 'document' | 'audio' | 'video';

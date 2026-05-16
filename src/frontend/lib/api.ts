@@ -1,171 +1,142 @@
-import API_BASE_URL from "./config";
 import type {
-  Tag,
-  UploadListItem,
-  NoteWithHistory,
-  Note,
-  User,
-  UploadResponse,
   AuthResponse,
-} from "./types";
+  MeResponse,
+  Note,
+  NoteWithHistory,
+  UploadListItem,
+  UploadResponse,
+} from './types';
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+
+function redirectToLogin(): never {
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
   }
+  throw new Error('Unauthorized');
 }
 
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+async function apiFetch<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
     ...options,
-    credentials: "include",
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "Unknown error");
-    throw new ApiError(response.status, text);
+  if (res.status === 401) {
+    redirectToLogin();
   }
 
-  return response.json() as Promise<T>;
+  if (!res.ok) {
+    const text = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Auth ────────────────────────────────────────────────────────────────────
 
-export async function getMe(): Promise<User> {
-  return fetchJson<User>(`${API_BASE_URL}/api/auth/me`);
-}
-
-export async function register(
-  email: string,
-  password: string,
-): Promise<AuthResponse> {
-  return fetchJson<AuthResponse>(`${API_BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+export async function getMe(): Promise<MeResponse> {
+  return apiFetch<MeResponse>('/api/auth/me');
 }
 
 export async function login(
   email: string,
-  password: string,
+  password: string
 ): Promise<AuthResponse> {
-  return fetchJson<AuthResponse>(`${API_BASE_URL}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  return apiFetch<AuthResponse>('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function register(
+  email: string,
+  password: string
+): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${API_BASE_URL}/api/auth/logout`, {
-    method: "POST",
-    credentials: "include",
+  await fetch(`${API_BASE}/api/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
   });
 }
 
-// ── Uploads ───────────────────────────────────────────────────────────────────
+// ── Uploads ──────────────────────────────────────────────────────────────────
 
-export async function getUploads(tagFilter?: string): Promise<UploadListItem[]> {
-  const url = tagFilter
-    ? `${API_BASE_URL}/api/uploads?tag=${encodeURIComponent(tagFilter)}`
-    : `${API_BASE_URL}/api/uploads`;
-  return fetchJson<UploadListItem[]>(url);
+export async function getUploads(): Promise<UploadListItem[]> {
+  return apiFetch<UploadListItem[]>('/api/uploads');
 }
 
 export async function uploadFile(file: File): Promise<UploadResponse> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append('file', file);
 
-  const response = await fetch(`${API_BASE_URL}/api/uploads`, {
-    method: "POST",
+  const res = await fetch(`${API_BASE}/api/uploads`, {
+    method: 'POST',
+    credentials: 'include',
     body: formData,
-    credentials: "include",
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "Upload failed");
-    throw new ApiError(response.status, text);
+  if (res.status === 401) {
+    redirectToLogin();
   }
 
-  return response.json() as Promise<UploadResponse>;
+  if (!res.ok) {
+    const text = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  return res.json() as Promise<UploadResponse>;
 }
 
 export async function deleteUpload(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/uploads/${id}`, {
-    method: "DELETE",
-    credentials: "include",
+  const res = await fetch(`${API_BASE}/api/uploads/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
   });
 
-  if (response.status !== 204) {
-    throw new ApiError(response.status, "Failed to delete upload");
+  if (res.status === 401) {
+    redirectToLogin();
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(text || `HTTP ${res.status}`);
   }
 }
 
-export async function getNotesByUploadId(
-  id: string,
-): Promise<NoteWithHistory> {
-  return fetchJson<NoteWithHistory>(`${API_BASE_URL}/api/uploads/${id}/notes`);
-}
+// ── Notes ────────────────────────────────────────────────────────────────────
 
-export async function exportNotes(
-  id: string,
-  format: "txt" | "pdf" | "docx",
-): Promise<Blob> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/uploads/${id}/notes?format=${format}`,
-    { credentials: "include" },
-  );
-
-  if (!response.ok) {
-    throw new ApiError(response.status, "Failed to export notes");
-  }
-
-  return response.blob();
+export async function getNotes(uploadId: string): Promise<NoteWithHistory> {
+  return apiFetch<NoteWithHistory>(`/api/uploads/${uploadId}/notes`);
 }
 
 export async function regenerateNote(
-  id: string,
-  prompt: string,
-): Promise<Note> {
-  return fetchJson<Note>(
-    `${API_BASE_URL}/api/uploads/${id}/notes/regenerate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
-    },
-  );
-}
-
-// ── Tags ──────────────────────────────────────────────────────────────────────
-
-export async function addTagToUpload(
   uploadId: string,
-  name: string,
-  color: string,
-): Promise<Tag> {
-  return fetchJson<Tag>(`${API_BASE_URL}/api/uploads/${uploadId}/tags`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, color }),
+  prompt: string
+): Promise<Note> {
+  return apiFetch<Note>(`/api/uploads/${uploadId}/notes/regenerate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
   });
 }
 
-export async function removeTagFromUpload(
+export function getExportUrl(
   uploadId: string,
-  tagId: string,
-): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/uploads/${uploadId}/tags/${tagId}`,
-    { method: "DELETE", credentials: "include" },
-  );
-
-  if (!response.ok) {
-    throw new ApiError(response.status, "Failed to remove tag");
-  }
+  format: 'txt' | 'pdf' | 'docx'
+): string {
+  return `${API_BASE}/api/uploads/${uploadId}/notes?format=${format}`;
 }

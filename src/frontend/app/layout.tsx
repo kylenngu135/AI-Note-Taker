@@ -1,38 +1,46 @@
-import type { Metadata } from "next";
-import { Instrument_Serif, DM_Mono } from "next/font/google";
-import { AuthProvider } from "@/context/AuthContext";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { DM_Sans, DM_Serif_Display, JetBrains_Mono } from 'next/font/google';
+import '@/styles/globals.css';
+import { ToastProvider } from '@/components/ui/Toast';
 
-const instrumentSerif = Instrument_Serif({
-  weight: ["400"],
-  style: ["normal", "italic"],
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  weight: ['400', '500', '600'],
+  display: 'swap',
 });
 
-const dmMono = DM_Mono({
-  weight: ["300", "400", "500"],
-  subsets: ["latin"],
-  variable: "--font-dm-mono",
+const dmSerifDisplay = DM_Serif_Display({
+  subsets: ['latin'],
+  variable: '--font-dm-serif-display',
+  weight: ['400'],
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
+  weight: ['400'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "AI Notes Generator",
-  description: "Upload documents or audio/video to generate AI study notes",
+  title: 'Note Taker',
+  description: 'AI-powered study notes from your documents',
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html
       lang="en"
-      className={`${instrumentSerif.variable} ${dmMono.variable} h-full overflow-hidden`}
+      className={`${dmSans.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="h-full overflow-hidden bg-app-bg text-primary font-mono text-sm leading-relaxed">
-        <AuthProvider>{children}</AuthProvider>
+      <body>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );
