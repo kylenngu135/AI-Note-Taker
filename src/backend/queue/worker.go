@@ -65,23 +65,30 @@ func processJob(db *sql.DB, job Job) error {
 		return fmt.Errorf("set processing: %w", err)
 	}
 
-	// Download the raw uploaded file from R2
-	rawData, err := storage.DownloadFile(ctx, job.FileKey, os.Getenv("R2_BUCKET_NAME"))
-	if err != nil {
-		return fmt.Errorf("download raw file: %w", err)
-	}
-
-	f := bytesFile{bytes.NewReader(rawData)}
-
-	// Transcribe or extract text depending on file type
 	var text string
+
 	if isDocumentMIME(job.FileType) {
+		// Documents are typically small — load into memory for extraction.
+		rawData, err := storage.DownloadFile(ctx, job.FileKey, os.Getenv("R2_BUCKET_NAME"))
+		if err != nil {
+			return fmt.Errorf("download raw file: %w", err)
+		}
+		f := bytesFile{bytes.NewReader(rawData)}
 		text, err = transcription.ExtractText(f, job.FileType)
+		if err != nil {
+			return fmt.Errorf("transcription: %w", err)
+		}
 	} else {
-		text, err = transcription.TranscribeAudio(f, job.Filename)
-	}
-	if err != nil {
-		return fmt.Errorf("transcription: %w", err)
+		// Audio/video: stream to a temp file to avoid loading large files into memory.
+		tmpPath, err := storage.DownloadFileToTemp(ctx, job.FileKey, os.Getenv("R2_BUCKET_NAME"))
+		if err != nil {
+			return fmt.Errorf("download raw file: %w", err)
+		}
+		defer func() { _ = os.Remove(tmpPath) }()
+		text, err = transcription.TranscribeAudioLarge(tmpPath, job.Filename)
+		if err != nil {
+			return fmt.Errorf("transcription: %w", err)
+		}
 	}
 
 	// Upload transcription text to R2

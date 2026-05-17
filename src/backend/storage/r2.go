@@ -99,6 +99,32 @@ func DownloadFile(ctx context.Context, key, bucket string) ([]byte, error) {
 	return data, nil
 }
 
+// DownloadFileToTemp streams an R2 object directly to a local temp file.
+// The caller is responsible for deleting the returned path when done.
+func DownloadFileToTemp(ctx context.Context, key, bucket string) (string, error) {
+	resp, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to download file: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	tmpFile, err := os.CreateTemp("", "r2-download-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() { _ = tmpFile.Close() }()
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		_ = os.Remove(tmpFile.Name())
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	return tmpFile.Name(), nil
+}
+
 func DeleteTranscription(ctx context.Context, storageKey string) error {
 	_, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(os.Getenv("R2_BUCKET_NAME")),

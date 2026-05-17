@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
@@ -18,10 +19,18 @@ import (
 	"AI-Note-Taker/storage"
 )
 
+func checkFFmpeg() {
+	if err := exec.Command("ffmpeg", "-version").Run(); err != nil {
+		log.Fatal("ffmpeg is required for audio chunking. Install with: sudo apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+	}
+}
+
 func main() {
 	if err := godotenv.Load("../../.env"); err != nil {
 		log.Println("no .env file found, using environment variables")
 	}
+
+	checkFFmpeg()
 
 	// R2 storage
 	err := storage.InitR2(
