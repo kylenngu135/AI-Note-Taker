@@ -1,11 +1,11 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -56,7 +56,7 @@ func UploadTranscription(ctx context.Context, uploadID, text, bucket string) (st
 	_, err := client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(bucket),
 		Key:         aws.String(key),
-		Body:        bytes.NewReader([]byte(text)),
+		Body:        strings.NewReader(text),
 		ContentType: aws.String("text/plain"),
 	})
 	if err != nil {
@@ -66,14 +66,15 @@ func UploadTranscription(ctx context.Context, uploadID, text, bucket string) (st
 	return key, nil
 }
 
-// UploadRawFile stores raw binary data at key "raw/{uploadID}" before processing.
-func UploadRawFile(ctx context.Context, uploadID string, data []byte, contentType, bucket string) (string, error) {
+// UploadRawFile streams a file to R2 at key "raw/{uploadID}" before processing.
+func UploadRawFile(ctx context.Context, uploadID string, r io.Reader, size int64, contentType, bucket string) (string, error) {
 	key := fmt.Sprintf("raw/%s", uploadID)
 	_, err := client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:      aws.String(bucket),
-		Key:         aws.String(key),
-		Body:        bytes.NewReader(data),
-		ContentType: aws.String(contentType),
+		Bucket:        aws.String(bucket),
+		Key:           aws.String(key),
+		Body:          r,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(contentType),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to upload raw file: %w", err)

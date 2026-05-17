@@ -352,19 +352,11 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the entire file into memory so we can upload it to R2 for async processing.
-	rawBytes, err := io.ReadAll(file)
-	if err != nil {
-		log.Println("Failed to read file:", err.Error())
-		http.Error(w, "failed to read file", http.StatusInternalServerError)
-		return
-	}
-
 	uploadID := uuid.New().String()
 	jobID := uuid.New().String()
 
-	// Store the raw file in R2 so the worker can retrieve it.
-	rawKey, err := storage.UploadRawFile(r.Context(), uploadID, rawBytes, fileType, os.Getenv("R2_BUCKET_NAME"))
+	// Stream the file directly to R2 so large files don't need to fit in RAM.
+	rawKey, err := storage.UploadRawFile(r.Context(), uploadID, file, header.Size, fileType, os.Getenv("R2_BUCKET_NAME"))
 	if err != nil {
 		log.Println("Failed to upload raw file:", err.Error())
 		http.Error(w, "failed to store file", http.StatusInternalServerError)
@@ -452,12 +444,12 @@ func validateUploadRequest(w http.ResponseWriter, r *http.Request) (ret bool) {
 		return
 	}
 
-	// max upload size is set to 100MB
-	const maxUploadSize = 100 << 20
+	// max upload size is 5GB; only 32MB is kept in memory — the rest spills to temp files
+	const maxUploadSize = 5 << 30
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 
 	// Parse the multipart form
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		http.Error(w, "file too large", http.StatusBadRequest)
 		return
 	}
