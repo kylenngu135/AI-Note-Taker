@@ -76,6 +76,9 @@ func TestTranscribeAudio_InvalidJSONResponse(t *testing.T) {
 
 func TestTranscribeAudio_ServiceUnavailable(t *testing.T) {
 	transcription.OpenAIBaseURL = "http://127.0.0.1:19999" // nothing listening
+	orig := transcription.RetryBackoff
+	transcription.RetryBackoff = nil
+	t.Cleanup(func() { transcription.RetryBackoff = orig })
 
 	file := &fakeFile{bytes.NewReader([]byte("audio"))}
 	_, err := transcription.TranscribeAudio(file, "audio.mp3")

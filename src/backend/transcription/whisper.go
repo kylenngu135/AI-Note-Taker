@@ -5,14 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"time"
 )
 
 var OpenAIBaseURL = "https://api.openai.com"
 
+// RetryBackoff controls sleep durations between Whisper API retry attempts.
+// Overridable in tests to avoid slow runs.
+var RetryBackoff = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+
 func TranscribeAudio(file multipart.File, filename string) (string, error) {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("seek file: %w", err)
+	}
+
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -33,29 +43,45 @@ func TranscribeAudio(file multipart.File, filename string) (string, error) {
 		return "", fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, OpenAIBaseURL+"/v1/audio/transcriptions", body)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	bodyBytes := body.Bytes()
+	contentType := writer.FormDataContentType()
+	maxAttempts := len(RetryBackoff) + 1
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to call whisper service: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest(http.MethodPost, OpenAIBaseURL+"/v1/audio/transcriptions", bytes.NewReader(bodyBytes))
+		if err != nil {
+			return "", fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
+		req.Header.Set("Content-Type", contentType)
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to call whisper service: %w", err)
+			if attempt < maxAttempts {
+				log.Printf("chunk %s: TLS error, retrying (attempt %d of %d)...", filename, attempt+1, maxAttempts)
+				time.Sleep(RetryBackoff[attempt-1])
+			}
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		var result struct {
+			Text string `json:"text"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&result)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			return "", fmt.Errorf("failed to decode response: %w", decodeErr)
+		}
+
+		return result.Text, nil
 	}
 
-	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return result.Text, nil
+	return "", lastErr
 }
