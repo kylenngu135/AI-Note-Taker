@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ai-note-taker
+    runtime: go
+    rootDir: src/backend
+    buildCommand: go build -tags netgo -ldflags '-s -w' -o app
+    startCommand: ./app
+    packages:
+      - ffmpeg
